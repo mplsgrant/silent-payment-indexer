@@ -15,7 +15,7 @@
 
 use bitcoin::{
     hashes::{hash160, Hash},
-    PublicKey, Script, ScriptBuf, TxIn,
+    PublicKey, ScriptBuf,
 };
 
 /// The test data file contains these "given" items
