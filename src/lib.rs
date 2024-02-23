@@ -58,13 +58,12 @@ fn get_pubkey_from_p2pkh(vin: InputData) -> Option<PublicKey> {
             .instruction_indices()
             .flatten()
             .flat_map(|(index, instruction)| {
-                if let Some(bytes) = instruction.push_bytes() {
+                instruction.push_bytes().map(|bytes| {
                     // TODO: use instruction.push_bytes directly instead of slicing the bytes
                     Some(&vin.script_sig.as_bytes()[index + 1..index + bytes.len() + 1])
-                } else {
-                    None
-                }
+                })
             })
+            .flatten()
             .find_map(|maybe_pubkey| {
                 let maybe_pubkey_hash = hash160::Hash::hash(maybe_pubkey);
                 if &maybe_pubkey_hash[..] == script_pubkey_hash {
