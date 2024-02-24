@@ -83,7 +83,6 @@ fn get_pubkey_from_p2pkh(vin: &InputData) -> Option<PublicKey> {
 fn get_pubkey_from_p2sh_p2wpkh(vin: &InputData) -> Option<PublicKey> {
     let redeem_script = &vin.script_sig.as_bytes()[1..];
     if Script::from_bytes(redeem_script).is_p2wpkh() {
-        println!("last: {:?}", vin.txinwitness.last());
         vin.txinwitness
             .last()
             .and_then(|maybe_pubkey| PublicKey::from_slice(maybe_pubkey).ok())
