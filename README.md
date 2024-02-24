@@ -5,6 +5,7 @@ Silent Payments help keep your Bitcoin balances more private. Today, if people s
 
 This indexer helps with Silent Payments by searching through the blockchain for your money. It needs a secret from you to perform the search, and I recommend not provding that secret unless you know what you are doing. Afterall, this is just a classroom project.
 
+# WIP Items
 - [ ] Extract pubkeys from relevant txn type
   - [x] p2pkh
   - [x] p2sh-p2wpkh
