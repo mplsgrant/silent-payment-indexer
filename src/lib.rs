@@ -94,9 +94,9 @@ fn get_pubkey_from_p2sh_p2wpkh(vin: &InputData) -> Option<PublicKey> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use bitcoin::consensus::deserialize;
     use hex_conservative::test_hex_unwrap as hex;
-    use super::*;
 
     #[test]
     fn simple_get_pubkey_from_p2pkh() {
@@ -134,6 +134,9 @@ mod tests {
             txinwitness: deserialize::<Witness>(&hex!("02483046022100ad79e6801dd9a8727f342f31c71c4912866f59dc6e7981878e92c5844a0ce929022100fb0d2393e813968648b9753b7e9871d90ab3d815ebf91820d704b19f4ed224d621025a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5")).unwrap(),
         };
         let maybe_pubkey = get_pubkey_from_p2sh_p2wpkh(&vin);
-        assert_eq!(maybe_pubkey.unwrap().pubkey_hash().to_string(), "19c2f3ae0ca3b642bd3e49598b8da89f50c14161");
+        assert_eq!(
+            maybe_pubkey.unwrap().pubkey_hash().to_string(),
+            "19c2f3ae0ca3b642bd3e49598b8da89f50c14161"
+        );
     }
 }
