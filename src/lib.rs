@@ -57,6 +57,9 @@ fn get_pubkey_from_input(vin: InputData) {
     if vin.prevout.is_p2wpkh() {
         get_pubkey_from_p2wpkh(&vin);
     }
+    if vin.prevout.is_p2tr() {
+        get_pubkey_from_p2tr(&vin);
+    }
 }
 
 fn get_pubkey_from_p2pkh(vin: &InputData) -> Option<PublicKey> {
