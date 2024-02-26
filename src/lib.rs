@@ -110,16 +110,17 @@ fn get_pubkey_from_p2wpkh(vin: &InputData) -> Option<PublicKey> {
 
 fn get_pubkey_from_p2tr(vin: &InputData) -> Option<PublicKey> {
     // TODO Why does tapscript() give us Script when BIP 141 says that "Witness data is NOT script."
-    let y = vin.txinwitness.len();
-    println!("{y}");
-    let z = vin
-        .txinwitness
-        .tapscript().map(|witness| witness.instruction_indices()).and_then(|instruction_indices| instruction_indices);
-    println!("z: {z:?}");
-    z.and_then(|witness| Some(println!("witness: {witness:?}")));
-
-
-    None
+    vin.txinwitness
+        .tapscript()
+        .map(|witness| &witness.as_bytes()[1..33])
+        .and_then(|maybe_pubkey| {
+            if maybe_pubkey == NUMS {
+                None
+            } else {
+                Some(maybe_pubkey)
+            }
+        })
+        .and_then(|maybe_pubkey| PublicKey::from_slice(maybe_pubkey).ok())
 }
 
 #[cfg(test)]
