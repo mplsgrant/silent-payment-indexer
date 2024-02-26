@@ -136,7 +136,7 @@ mod tests {
     use hex_conservative::test_hex_unwrap as hex;
 
     #[test]
-    fn simple_get_pubkey_from_p2pkh() {
+    fn basic_get_pubkey_from_p2pkh() {
         // https://github.com/bitcoin/bips/blob/73f1a52aafbc54a6ea2ce9a9e5edb20c24948b87/bip-0352/send_and_receive_test_vectors.json#L15
         let vin = InputData {
             prevout: ScriptBuf::from_hex("76a91419c2f3ae0ca3b642bd3e49598b8da89f50c1416188ac").unwrap(), script_sig: ScriptBuf::from_hex("483046022100ad79e6801dd9a8727f342f31c71c4912866f59dc6e7981878e92c5844a0ce929022100fb0d2393e813968648b9753b7e9871d90ab3d815ebf91820d704b19f4ed224d621025a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5").unwrap(),
@@ -162,7 +162,7 @@ mod tests {
     }
 
     #[test]
-    fn simple_get_pubkey_from_p2sh_p2wpkh() {
+    fn basic_get_pubkey_from_p2sh_p2wpkh() {
         // https://github.com/bitcoin/bips/blob/73f1a52aafbc54a6ea2ce9a9e5edb20c24948b87/bip-0352/send_and_receive_test_vectors.json#L2412
         let vin = InputData {
             prevout: ScriptBuf::from_hex("a9148629db5007d5fcfbdbb466637af09daf9125969387").unwrap(),
@@ -177,7 +177,7 @@ mod tests {
         );
     }
     #[test]
-    fn simple_get_pubkey_from_p2wpkh() {
+    fn basic_get_pubkey_from_p2wpkh() {
         // TODO got these values from they p2sh_p2wpkh test. Need to find (or make) known-good p2wpkh test data.
         let vin = InputData {
             prevout: ScriptBuf::from_hex("00140423f731a07491364e8dce98b7c00bda63336950").unwrap(),
@@ -192,7 +192,7 @@ mod tests {
         );
     }
     #[test]
-    fn simple_size_1_get_pubkey_from_p2tr() {
+    fn basic_size_1_get_pubkey_from_p2tr() {
         let vin = InputData {
             prevout: ScriptBuf::from_hex("51205a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5").unwrap(),
             script_sig: ScriptBuf::new(),
@@ -205,7 +205,7 @@ mod tests {
         );
     }
     #[test]
-    fn simple_size_4_get_pubkey_from_p2tr() {
+    fn basic_size_4_get_pubkey_from_p2tr() {
         let vin = InputData {
             prevout: ScriptBuf::from_hex("5120da6f0595ecb302bbe73e2f221f05ab10f336b06817d36fd28fc6691725ddaa85").unwrap(),
             script_sig: ScriptBuf::new(),
