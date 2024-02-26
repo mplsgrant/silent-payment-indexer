@@ -18,6 +18,12 @@ use bitcoin::{
     PublicKey, Script, ScriptBuf, Witness,
 };
 
+/// "Nothing Up My Sleeves" number from BIP 341: 0x50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0
+static NUMS: [u8; 32] = [
+    80, 146, 155, 116, 193, 160, 73, 84, 183, 139, 75, 96, 53, 233, 122, 94, 7, 138, 90, 15, 40,
+    236, 150, 213, 71, 191, 238, 154, 206, 128, 58, 192,
+];
+
 /// The test data file contains these "given" items
 struct TestDataGiven {
     pub txid: String,
@@ -191,5 +197,26 @@ mod tests {
             maybe_pubkey.unwrap().pubkey_hash().to_string(),
             "19c2f3ae0ca3b642bd3e49598b8da89f50c14161"
         );
+    }
+
+    #[test]
+    fn arrive_at_nums() {
+        let (nums, _, _) = "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0"
+            .chars()
+            .enumerate()
+            .fold(
+                (vec![], ' ', ' '),
+                |(mut v, mut left, mut right), (i, ch)| {
+                    if i % 2 == 0 {
+                        left = ch;
+                    } else {
+                        right = ch;
+                        let src = format!("{}{}", left, right);
+                        v.push(u8::from_str_radix(&src, 16).unwrap());
+                    }
+                    (v, left, right)
+                },
+            );
+        assert_eq!(NUMS, nums.as_slice());
     }
 }
