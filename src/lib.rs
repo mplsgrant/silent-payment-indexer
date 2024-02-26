@@ -15,7 +15,7 @@
 
 use bitcoin::{
     hashes::{hash160, Hash},
-    PublicKey, Script, ScriptBuf, Witness,
+    PublicKey, Script, ScriptBuf, Witness, XOnlyPublicKey,
 };
 
 /// "Nothing Up My Sleeves" number from BIP 341: 0x50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0
@@ -108,8 +108,11 @@ fn get_pubkey_from_p2wpkh(vin: &InputData) -> Option<PublicKey> {
         .filter(|pub_key| pub_key.compressed)
 }
 
-fn get_pubkey_from_p2tr(vin: &InputData) -> Option<PublicKey> {
+fn get_pubkey_from_p2tr(vin: &InputData) -> Option<XOnlyPublicKey> {
     // TODO Why does tapscript() give us Script when BIP 141 says that "Witness data is NOT script."
+    if vin.txinwitness.len() == 1 {
+        return XOnlyPublicKey::from_slice(&vin.prevout.as_bytes()[2..]).ok();
+    }
     vin.txinwitness
         .tapscript()
         .map(|witness| &witness.as_bytes()[1..33])
@@ -120,7 +123,7 @@ fn get_pubkey_from_p2tr(vin: &InputData) -> Option<PublicKey> {
                 Some(maybe_pubkey)
             }
         })
-        .and_then(|maybe_pubkey| PublicKey::from_slice(maybe_pubkey).ok())
+        .and_then(|maybe_pubkey| XOnlyPublicKey::from_slice(maybe_pubkey).ok())
 }
 
 #[cfg(test)]
@@ -186,20 +189,31 @@ mod tests {
         );
     }
     #[test]
-    fn simple_get_pubkey_from_p2tr() {
+    fn simple_size_1_get_pubkey_from_p2tr() {
         let vin = InputData {
             prevout: ScriptBuf::from_hex("51205a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5").unwrap(),
             script_sig: ScriptBuf::new(),
-
+            txinwitness: deserialize::<Witness>(&hex!("0140c459b671370d12cfb5acee76da7e3ba7cc29b0b4653e3af8388591082660137d087fdc8e89a612cd5d15be0febe61fc7cdcf3161a26e599a4514aa5c3e86f47b")).unwrap(),
+        };
+        let maybe_pubkey = get_pubkey_from_p2tr(&vin);
+        assert_eq!(
+            maybe_pubkey.unwrap().to_string(),
+            "5a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5"
+        );
+    }
+    #[test]
+    fn simple_size_4_get_pubkey_from_p2tr() {
+        let vin = InputData {
+            prevout: ScriptBuf::from_hex("5120da6f0595ecb302bbe73e2f221f05ab10f336b06817d36fd28fc6691725ddaa85").unwrap(),
+            script_sig: ScriptBuf::new(),
             txinwitness: deserialize::<Witness>(&hex!("0440c459b671370d12cfb5acee76da7e3ba7cc29b0b4653e3af8388591082660137d087fdc8e89a612cd5d15be0febe61fc7cdcf3161a26e599a4514aa5c3e86f47b22205a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5ac21c150929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac00150")).unwrap(),
         };
         let maybe_pubkey = get_pubkey_from_p2tr(&vin);
         assert_eq!(
-            maybe_pubkey.unwrap().pubkey_hash().to_string(),
-            "19c2f3ae0ca3b642bd3e49598b8da89f50c14161"
+            maybe_pubkey.unwrap().to_string(),
+            "5a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5"
         );
     }
-
     #[test]
     fn arrive_at_nums() {
         let (nums, _, _) = "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0"
