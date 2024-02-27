@@ -13,6 +13,8 @@
 // You should have received a copy of the GNU General Public License along with Foobar. If not, see
 // <https://www.gnu.org/licenses/>.
 
+mod tagged_hashes;
+
 use bitcoin::{
     hashes::{hash160, Hash},
     key::Parity,
@@ -34,6 +36,26 @@ struct TestDataGiven {
     /// The _scriptPubKey_hex of the prevout
     pub prevout: ScriptBuf,
     pub private_key: String,
+}
+
+struct PublicKeySummation {
+    inner: PublicKey,
+}
+impl PublicKeySummation {
+    fn new(keys: &[PublicKey]) -> Option<Self> {
+        let inner_keys = keys
+            .iter()
+            .map(|x| &x.inner)
+            .collect::<Vec<&secp256k1::PublicKey>>();
+        secp256k1::PublicKey::combine_keys(inner_keys.as_slice())
+            .ok()
+            .map(|secp_pubkey| Self {
+                inner: PublicKey::new(secp_pubkey),
+            })
+    }
+    fn public_key(&self) -> PublicKey {
+        self.inner
+    }
 }
 
 /// The data required to derive a pubkey from an input.

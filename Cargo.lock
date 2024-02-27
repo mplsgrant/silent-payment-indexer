@@ -146,7 +146,9 @@ name = "silent_payment_indexer"
 version = "0.1.0"
 dependencies = [
  "bitcoin",
+ "bitcoin_hashes",
  "db-key",
  "hex-conservative",
  "leveldb",
+ "secp256k1",
 ]
