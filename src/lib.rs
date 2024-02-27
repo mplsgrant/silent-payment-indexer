@@ -15,6 +15,7 @@
 
 use bitcoin::{
     hashes::{hash160, Hash},
+    key::Parity,
     PublicKey, Script, ScriptBuf, Witness, XOnlyPublicKey,
 };
 
@@ -47,19 +48,22 @@ struct InputData {
     pub txinwitness: Witness,
 }
 
-fn get_pubkey_from_input(vin: InputData) {
+fn get_pubkey_from_input(vin: &InputData) -> Option<PublicKey> {
     if vin.prevout.is_p2pkh() {
-        get_pubkey_from_p2pkh(&vin);
+        return get_pubkey_from_p2pkh(vin);
     }
     if vin.prevout.is_p2sh() {
-        get_pubkey_from_p2sh_p2wpkh(&vin);
+        return get_pubkey_from_p2sh_p2wpkh(vin);
     }
     if vin.prevout.is_p2wpkh() {
-        get_pubkey_from_p2wpkh(&vin);
+        return get_pubkey_from_p2wpkh(vin);
     }
     if vin.prevout.is_p2tr() {
-        get_pubkey_from_p2tr(&vin);
+        return get_pubkey_from_p2tr(vin)
+            .map(|xonly_pubkey| xonly_pubkey.public_key(Parity::Even))
+            .map(PublicKey::new);
     }
+    None
 }
 
 fn get_pubkey_from_p2pkh(vin: &InputData) -> Option<PublicKey> {
@@ -145,6 +149,8 @@ mod tests {
             "19c2f3ae0ca3b642bd3e49598b8da89f50c14161",
             maybe_pubkey.unwrap().pubkey_hash().to_string()
         );
+        let maybe_pubkey_from_input = get_pubkey_from_input(&vin);
+        assert_eq!(maybe_pubkey, maybe_pubkey_from_input);
     }
 
     #[test]
@@ -158,6 +164,8 @@ mod tests {
             "c82c5ec473cbc6c86e5ef410e36f9495adcf9799",
             maybe_pubkey.unwrap().pubkey_hash().to_string()
         );
+        let maybe_pubkey_from_input = get_pubkey_from_input(&vin);
+        assert_eq!(maybe_pubkey, maybe_pubkey_from_input);
     }
 
     #[test]
@@ -174,6 +182,8 @@ mod tests {
             maybe_pubkey.unwrap().pubkey_hash().to_string(),
             "19c2f3ae0ca3b642bd3e49598b8da89f50c14161"
         );
+        let maybe_pubkey_from_input = get_pubkey_from_input(&vin);
+        assert_eq!(maybe_pubkey, maybe_pubkey_from_input);
     }
     #[test]
     fn basic_get_pubkey_from_p2wpkh() {
@@ -189,6 +199,8 @@ mod tests {
             maybe_pubkey.unwrap().pubkey_hash().to_string(),
             "19c2f3ae0ca3b642bd3e49598b8da89f50c14161"
         );
+        let maybe_pubkey_from_input = get_pubkey_from_input(&vin);
+        assert_eq!(maybe_pubkey, maybe_pubkey_from_input);
     }
     #[test]
     fn basic_size_1_get_pubkey_from_p2tr() {
@@ -202,6 +214,13 @@ mod tests {
             maybe_pubkey.unwrap().to_string(),
             "5a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5"
         );
+        let maybe_pubkey_from_input = get_pubkey_from_input(&vin);
+        assert_eq!(
+            maybe_pubkey
+                .map(|xonly| xonly.public_key(Parity::Even))
+                .map(PublicKey::new),
+            maybe_pubkey_from_input
+        );
     }
     #[test]
     fn basic_size_4_get_pubkey_from_p2tr() {
@@ -214,6 +233,13 @@ mod tests {
         assert_eq!(
             maybe_pubkey.unwrap().to_string(),
             "da6f0595ecb302bbe73e2f221f05ab10f336b06817d36fd28fc6691725ddaa85"
+        );
+        let maybe_pubkey_from_input = get_pubkey_from_input(&vin);
+        assert_eq!(
+            maybe_pubkey
+                .map(|xonly| xonly.public_key(Parity::Even))
+                .map(PublicKey::new),
+            maybe_pubkey_from_input
         );
     }
     #[test]
