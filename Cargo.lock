@@ -150,5 +150,4 @@ dependencies = [
  "db-key",
  "hex-conservative",
  "leveldb",
- "secp256k1",
 ]

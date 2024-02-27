@@ -15,7 +15,7 @@
 
 use std::collections::BTreeSet;
 
-use bitcoin::{consensus::Encodable, OutPoint, PublicKey};
+use bitcoin::{consensus::Encodable, OutPoint};
 use bitcoin_hashes::{sha256t_hash_newtype, Hash, HashEngine};
 
 use crate::PublicKeySummation;
@@ -54,7 +54,7 @@ impl InputsHash {
             .outpoint()
             .consensus_encode(&mut eng)
             .expect("engines don't error");
-        eng.input(&inputs.public_key().inner.serialize())
+        eng.input(&inputs.public_key().serialize())
     }
 }
 
