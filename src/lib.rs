@@ -119,14 +119,13 @@ fn get_pubkey_from_p2tr(vin: &InputData) -> Option<XOnlyPublicKey> {
     vin.txinwitness
         .tapscript()
         .map(|witness| &witness.as_bytes()[1..33])
-        .and_then(|maybe_pubkey| {
-            if maybe_pubkey == NUMS {
+        .and_then(|internal_key| {
+            if internal_key == NUMS {
                 None
             } else {
-                Some(maybe_pubkey)
+                XOnlyPublicKey::from_slice(&vin.prevout.as_bytes()[2..]).ok()
             }
         })
-        .and_then(|maybe_pubkey| XOnlyPublicKey::from_slice(maybe_pubkey).ok())
 }
 
 #[cfg(test)]
@@ -214,7 +213,7 @@ mod tests {
         let maybe_pubkey = get_pubkey_from_p2tr(&vin);
         assert_eq!(
             maybe_pubkey.unwrap().to_string(),
-            "5a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5"
+            "da6f0595ecb302bbe73e2f221f05ab10f336b06817d36fd28fc6691725ddaa85"
         );
     }
     #[test]
