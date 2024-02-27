@@ -48,13 +48,17 @@ sha256t_hash_newtype! {
 
 impl InputsHash {
     /// outpoint is the lexicographically smallest, and inputs are the contributing public keys
-    fn from_outpoint_and_input_summation(outpoint: SmallestOutpoint, inputs: &PublicKeySummation) {
+    fn from_outpoint_and_input_summation(
+        outpoint: SmallestOutpoint,
+        input_summation: &PublicKeySummation,
+    ) -> InputsHash {
         let mut eng = InputsHash::engine();
         outpoint
             .outpoint()
             .consensus_encode(&mut eng)
             .expect("engines don't error");
-        eng.input(&inputs.public_key().serialize())
+        eng.input(&input_summation.public_key().serialize());
+        InputsHash::from_engine(eng)
     }
 }
 
