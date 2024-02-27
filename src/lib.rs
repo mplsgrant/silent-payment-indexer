@@ -64,6 +64,7 @@ struct InputData {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn arrive_at_nums() {
         let (nums, _, _) = "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0"
