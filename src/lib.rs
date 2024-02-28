@@ -14,7 +14,9 @@
 // <https://www.gnu.org/licenses/>.
 
 mod pubkey_extraction;
+mod sender;
 mod tagged_hashes;
+mod test_data;
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::{ScriptBuf, Witness};
 
