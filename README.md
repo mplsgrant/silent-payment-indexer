@@ -13,3 +13,22 @@ This indexer helps with Silent Payments by searching through the blockchain for 
   - [x] p2sh-p2wpkh
   - [x] p2wpkh
   - [x] p2tr
+
+# Questions
+- Labels for change: Will the m=0 labeled addresses look like a change addresses to nosy observers?
+
+
+# Diagram
+
+```
+ ┏━━━━━━━━━━┱────────────╮           An outpoint - the transaction hash and its
+ ┃ Outpoint ┃ txid, vout │           specific vout index.
+ ┗━━━━━━━━━━┹────────────╯
+ ┏━━━━━━━━━━┱────────────────────╮
+ ┃ Sig Data ┃ scriptSig, witness │
+ ┗━━━━━━━━━━┹────────────────────╯
+ ┏━━━━━━━━━━┱──────────────────────╮ Trannsaction Output. The private key must
+ ┃ TxOut    ┃ amount, scriptPubKey │ be able to sign the public key contained
+ ┗━━━━━━━━━━┹──────────────────────╯ within.
+
+```

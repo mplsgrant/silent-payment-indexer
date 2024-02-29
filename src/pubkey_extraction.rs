@@ -9,7 +9,13 @@ use bitcoin::{
 
 use crate::NUMS;
 
-fn get_pubkey_from_input(vin: &InputData) -> Option<PublicKey> {
+/// Get Inputs For Shared Secret Derivation (IFSSD)
+///
+/// As per BIP 352: "While any UTXO with known output scripts can be used to fund the transaction,
+/// the sender and receiver MUST use inputs from the following list when deriving the shared secret:
+/// P2TR, P2WPKH, P2SH-P2WPKH, P2PKH". Also, "for all of the output types listed, only X-only and
+/// compressed public keys are permitted."
+pub fn get_ifssd(vin: &InputData) -> Option<PublicKey> {
     if vin.prevout.is_p2pkh() {
         return get_pubkey_from_p2pkh(vin);
     }
@@ -108,7 +114,7 @@ mod tests {
         let pubkey = get_pubkey_from_p2pkh(&vin).unwrap();
         let pubkey_hash = bitcoin::PublicKey::new(pubkey).pubkey_hash().to_string();
         assert_eq!(pubkey_hash, "19c2f3ae0ca3b642bd3e49598b8da89f50c14161",);
-        let pubkey_from_input = get_pubkey_from_input(&vin).unwrap();
+        let pubkey_from_input = get_ifssd(&vin).unwrap();
         assert_eq!(pubkey, pubkey_from_input);
     }
 
@@ -121,7 +127,7 @@ mod tests {
         let pubkey = get_pubkey_from_p2pkh(&vin).unwrap();
         let pubkey_hash = bitcoin::PublicKey::new(pubkey).pubkey_hash().to_string();
         assert_eq!(pubkey_hash, "c82c5ec473cbc6c86e5ef410e36f9495adcf9799",);
-        let pubkey_from_input = get_pubkey_from_input(&vin).unwrap();
+        let pubkey_from_input = get_ifssd(&vin).unwrap();
         assert_eq!(pubkey, pubkey_from_input);
     }
 
@@ -137,7 +143,7 @@ mod tests {
         let pubkey = get_pubkey_from_p2sh_p2wpkh(&vin).unwrap();
         let pubkey_hash = bitcoin::PublicKey::new(pubkey).pubkey_hash().to_string();
         assert_eq!(pubkey_hash, "19c2f3ae0ca3b642bd3e49598b8da89f50c14161");
-        let pubkey_from_input = get_pubkey_from_input(&vin).unwrap();
+        let pubkey_from_input = get_ifssd(&vin).unwrap();
         assert_eq!(pubkey, pubkey_from_input);
     }
     #[test]
@@ -155,7 +161,7 @@ mod tests {
             pubkey_hash.to_string(),
             "19c2f3ae0ca3b642bd3e49598b8da89f50c14161"
         );
-        let pubkey_from_input = get_pubkey_from_input(&vin).unwrap();
+        let pubkey_from_input = get_ifssd(&vin).unwrap();
         assert_eq!(pubkey, pubkey_from_input);
     }
     #[test]
@@ -170,7 +176,7 @@ mod tests {
             maybe_pubkey.unwrap().to_string(),
             "5a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5"
         );
-        let maybe_pubkey_from_input = get_pubkey_from_input(&vin);
+        let maybe_pubkey_from_input = get_ifssd(&vin);
         assert_eq!(
             maybe_pubkey.map(|xonly| xonly.public_key(Parity::Even)),
             maybe_pubkey_from_input
@@ -188,7 +194,7 @@ mod tests {
             maybe_pubkey.unwrap().to_string(),
             "da6f0595ecb302bbe73e2f221f05ab10f336b06817d36fd28fc6691725ddaa85"
         );
-        let maybe_pubkey_from_input = get_pubkey_from_input(&vin);
+        let maybe_pubkey_from_input = get_ifssd(&vin);
         assert_eq!(
             maybe_pubkey.map(|xonly| xonly.public_key(Parity::Even)),
             maybe_pubkey_from_input
