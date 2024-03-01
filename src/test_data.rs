@@ -30,7 +30,8 @@ pub struct BIP352Vin {
     pub txid: Txid,
     pub vout: usize,
     #[serde(alias = "scriptSig")]
-    pub script_sig: ScriptBuf,
+    #[serde(with = "empty_scriptsig_is_none")]
+    pub script_sig: Option<ScriptBuf>,
     #[serde(with = "empty_witness_is_none")]
     pub txinwitness: Option<Witness>,
     pub prevout: BIP352Prevout,
@@ -89,6 +90,42 @@ mod empty_witness_is_none {
                 let mut reader = reader.as_slice();
                 let w =
                     Witness::consensus_decode(&mut reader).expect("witness deserialization issue");
+                Ok(Some(w))
+            }
+        }
+    }
+}
+
+mod empty_scriptsig_is_none {
+    use bitcoin::ScriptBuf;
+    use hex_conservative::FromHex;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S>(value: &Option<ScriptBuf>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let v = if let Some(v) = value {
+            return v.serialize(serializer);
+        } else {
+            ""
+        };
+        serializer.serialize_str(v)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<ScriptBuf>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // This can be made generic: https://github.com/serde-rs/serde/issues/1425#issuecomment-462282398
+        let opt = Option::<String>::deserialize(deserializer)?;
+        let opt = opt.as_deref();
+        match opt {
+            None | Some("") => Ok(None),
+            Some(s) => {
+                let reader = Vec::from_hex(s).unwrap();
+                let mut reader = reader.as_slice();
+                let w = ScriptBuf::from_hex(s).expect("script_sig deserialization issue");
                 Ok(Some(w))
             }
         }
