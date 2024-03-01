@@ -1,4 +1,4 @@
-use bitcoin::{secp256k1::SecretKey, Amount, ScriptBuf, Txid, Witness};
+use bitcoin::{secp256k1::SecretKey, ScriptBuf, Txid, Witness};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -38,23 +38,23 @@ pub struct BIP352Vin {
 }
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(transparent)]
-struct Recipients {
+pub struct Recipients {
     pub recipients: (SPAddress, f32),
 }
 type SPAddress = String;
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(transparent)]
-struct Outputs {
+pub struct Outputs {
     pub outputs: Output,
 }
 type Output = (Txid, f32);
 #[derive(Serialize, Deserialize, Clone)]
-struct BIP352Prevout {
+pub struct BIP352Prevout {
     #[serde(alias = "scriptPubKey")]
     pub script_pubkey: BIP352ScriptPubKey,
 }
 #[derive(Serialize, Deserialize, Clone)]
-struct BIP352ScriptPubKey {
+pub struct BIP352ScriptPubKey {
     pub hex: String,
 }
 
