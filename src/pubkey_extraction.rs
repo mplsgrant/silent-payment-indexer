@@ -133,9 +133,14 @@ mod tests {
     #[test]
     fn basic_get_pubkey_from_p2pkh() {
         // https://github.com/bitcoin/bips/blob/73f1a52aafbc54a6ea2ce9a9e5edb20c24948b87/bip-0352/send_and_receive_test_vectors.json#L15
+        let prevout =
+            ScriptBuf::from_hex("76a91419c2f3ae0ca3b642bd3e49598b8da89f50c1416188ac").unwrap();
+        let script_sig = ScriptBuf::from_hex("483046022100ad79e6801dd9a8727f342f31c71c4912866f59dc6e7981878e92c5844a0ce929022100fb0d2393e813968648b9753b7e9871d90ab3d815ebf91820d704b19f4ed224d621025a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5").unwrap();
         let vin = InputData {
-            prevout: ScriptBuf::from_hex("76a91419c2f3ae0ca3b642bd3e49598b8da89f50c1416188ac").unwrap(), script_sig: Some(ScriptBuf::from_hex("483046022100ad79e6801dd9a8727f342f31c71c4912866f59dc6e7981878e92c5844a0ce929022100fb0d2393e813968648b9753b7e9871d90ab3d815ebf91820d704b19f4ed224d621025a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5").unwrap()),
-            txinwitness: None, };
+            prevout: &prevout,
+            script_sig: Some(&script_sig),
+            txinwitness: None,
+        };
         let pubkey = get_pubkey_from_p2pkh(&vin).unwrap();
         let pubkey_hash = bitcoin::PublicKey::new(pubkey).pubkey_hash().to_string();
         assert_eq!(pubkey_hash, "19c2f3ae0ca3b642bd3e49598b8da89f50c14161",);
@@ -147,8 +152,14 @@ mod tests {
     fn malleated_get_pubkey_from_p2pkh() {
         // https://github.com/bitcoin/bips/blob/73f1a52aafbc54a6ea2ce9a9e5edb20c24948b87/bip-0352/send_and_receive_test_vectors.json#L2198
         // TODO: Verify that the malleation is swapping a compressed pubkey with an uncompressed one
+        let prevout =
+            ScriptBuf::from_hex("76a914c82c5ec473cbc6c86e5ef410e36f9495adcf979988ac").unwrap();
+        let script_sig = ScriptBuf::from_hex("5163473045022100e7d26e77290b37128f5215ade25b9b908ce87cc9a4d498908b5bb8fd6daa1b8d022002568c3a8226f4f0436510283052bfb780b76f3fe4aa60c4c5eb118e43b187372102e0ec4f64b3fa2e463ccfcf4e856e37d5e1e20275bc89ec1def9eb098eff1f85d67483046022100c0d3c851d3bd562ae93d56bcefd735ea57c027af46145a4d5e9cac113bfeb0c2022100ee5b2239af199fa9b7aa1d98da83a29d0a2cf1e4f29e2f37134ce386d51c544c2102ad0f26ddc7b3fcc340155963b3051b85289c1869612ecb290184ac952e2864ec68").unwrap();
         let vin = InputData {
-            prevout:  ScriptBuf::from_hex("76a914c82c5ec473cbc6c86e5ef410e36f9495adcf979988ac").unwrap(), script_sig: Some(ScriptBuf::from_hex("5163473045022100e7d26e77290b37128f5215ade25b9b908ce87cc9a4d498908b5bb8fd6daa1b8d022002568c3a8226f4f0436510283052bfb780b76f3fe4aa60c4c5eb118e43b187372102e0ec4f64b3fa2e463ccfcf4e856e37d5e1e20275bc89ec1def9eb098eff1f85d67483046022100c0d3c851d3bd562ae93d56bcefd735ea57c027af46145a4d5e9cac113bfeb0c2022100ee5b2239af199fa9b7aa1d98da83a29d0a2cf1e4f29e2f37134ce386d51c544c2102ad0f26ddc7b3fcc340155963b3051b85289c1869612ecb290184ac952e2864ec68").unwrap()), txinwitness: None };
+            prevout: &prevout,
+            script_sig: Some(&script_sig),
+            txinwitness: None,
+        };
         let pubkey = get_pubkey_from_p2pkh(&vin).unwrap();
         let pubkey_hash = bitcoin::PublicKey::new(pubkey).pubkey_hash().to_string();
         assert_eq!(pubkey_hash, "c82c5ec473cbc6c86e5ef410e36f9495adcf9799",);
@@ -159,11 +170,15 @@ mod tests {
     #[test]
     fn basic_get_pubkey_from_p2sh_p2wpkh() {
         // https://github.com/bitcoin/bips/blob/73f1a52aafbc54a6ea2ce9a9e5edb20c24948b87/bip-0352/send_and_receive_test_vectors.json#L2412
+        let prevout =
+            ScriptBuf::from_hex("a9148629db5007d5fcfbdbb466637af09daf9125969387").unwrap();
+        let script_sig =
+            ScriptBuf::from_hex("16001419c2f3ae0ca3b642bd3e49598b8da89f50c14161").unwrap();
+        let witness = deserialize::<Witness>(&hex!("02483046022100ad79e6801dd9a8727f342f31c71c4912866f59dc6e7981878e92c5844a0ce929022100fb0d2393e813968648b9753b7e9871d90ab3d815ebf91820d704b19f4ed224d621025a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5")).unwrap();
         let vin = InputData {
-            prevout: ScriptBuf::from_hex("a9148629db5007d5fcfbdbb466637af09daf9125969387").unwrap(),
-            script_sig: Some(ScriptBuf::from_hex("16001419c2f3ae0ca3b642bd3e49598b8da89f50c14161")
-                .unwrap()),
-            txinwitness: Some(deserialize::<Witness>(&hex!("02483046022100ad79e6801dd9a8727f342f31c71c4912866f59dc6e7981878e92c5844a0ce929022100fb0d2393e813968648b9753b7e9871d90ab3d815ebf91820d704b19f4ed224d621025a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5")).unwrap()),
+            prevout: &prevout,
+            script_sig: Some(&script_sig),
+            txinwitness: Some(&witness),
         };
         let pubkey = get_pubkey_from_p2sh_p2wpkh(&vin).unwrap();
         let pubkey_hash = bitcoin::PublicKey::new(pubkey).pubkey_hash().to_string();
@@ -174,10 +189,12 @@ mod tests {
     #[test]
     fn basic_get_pubkey_from_p2wpkh() {
         // TODO got these values from they p2sh_p2wpkh test. Need to find (or make) known-good p2wpkh test data.
+        let prevout = ScriptBuf::from_hex("00140423f731a07491364e8dce98b7c00bda63336950").unwrap();
+        let witness = deserialize::<Witness>(&hex!("02483046022100ad79e6801dd9a8727f342f31c71c4912866f59dc6e7981878e92c5844a0ce929022100fb0d2393e813968648b9753b7e9871d90ab3d815ebf91820d704b19f4ed224d621025a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5")).unwrap();
         let vin = InputData {
-            prevout: ScriptBuf::from_hex("00140423f731a07491364e8dce98b7c00bda63336950").unwrap(),
+            prevout: &prevout,
             script_sig: None,
-            txinwitness: Some(deserialize::<Witness>(&hex!("02483046022100ad79e6801dd9a8727f342f31c71c4912866f59dc6e7981878e92c5844a0ce929022100fb0d2393e813968648b9753b7e9871d90ab3d815ebf91820d704b19f4ed224d621025a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5")).unwrap()),
+            txinwitness: Some(&witness),
         };
         let pubkey = get_pubkey_from_p2wpkh(&vin).unwrap();
         let pubkey_hash = bitcoin::PublicKey::new(pubkey).pubkey_hash();
@@ -190,10 +207,15 @@ mod tests {
     }
     #[test]
     fn basic_size_1_get_pubkey_from_p2tr() {
+        let prevout = ScriptBuf::from_hex(
+            "51205a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5",
+        )
+        .unwrap();
+        let witness = deserialize::<Witness>(&hex!("0140c459b671370d12cfb5acee76da7e3ba7cc29b0b4653e3af8388591082660137d087fdc8e89a612cd5d15be0febe61fc7cdcf3161a26e599a4514aa5c3e86f47b")).unwrap();
         let vin = InputData {
-            prevout: ScriptBuf::from_hex("51205a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5").unwrap(),
+            prevout: &prevout,
             script_sig: None,
-            txinwitness: Some( deserialize::<Witness>(&hex!("0140c459b671370d12cfb5acee76da7e3ba7cc29b0b4653e3af8388591082660137d087fdc8e89a612cd5d15be0febe61fc7cdcf3161a26e599a4514aa5c3e86f47b")).unwrap()),
+            txinwitness: Some(&witness),
         };
         let maybe_pubkey = get_pubkey_from_p2tr(&vin);
         assert_eq!(
@@ -208,10 +230,15 @@ mod tests {
     }
     #[test]
     fn basic_size_4_get_pubkey_from_p2tr() {
+        let witness = deserialize::<Witness>(&hex!("0440c459b671370d12cfb5acee76da7e3ba7cc29b0b4653e3af8388591082660137d087fdc8e89a612cd5d15be0febe61fc7cdcf3161a26e599a4514aa5c3e86f47b22205a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5ac21c150929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac00150")).unwrap();
+        let prevout = ScriptBuf::from_hex(
+            "5120da6f0595ecb302bbe73e2f221f05ab10f336b06817d36fd28fc6691725ddaa85",
+        )
+        .unwrap();
         let vin = InputData {
-            prevout: ScriptBuf::from_hex("5120da6f0595ecb302bbe73e2f221f05ab10f336b06817d36fd28fc6691725ddaa85").unwrap(),
+            prevout: &prevout,
             script_sig: None,
-            txinwitness: Some(deserialize::<Witness>(&hex!("0440c459b671370d12cfb5acee76da7e3ba7cc29b0b4653e3af8388591082660137d087fdc8e89a612cd5d15be0febe61fc7cdcf3161a26e599a4514aa5c3e86f47b22205a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5ac21c150929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac00150")).unwrap()),
+            txinwitness: Some(&witness),
         };
         let maybe_pubkey = get_pubkey_from_p2tr(&vin);
         assert_eq!(

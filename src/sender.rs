@@ -2,9 +2,6 @@ use crate::{pubkey_extraction::get_ifssd, InputData};
 use bitcoin::{secp256k1::PublicKey, PrivateKey};
 use std::collections::HashMap;
 
-type InputDataPrivateKeyMap = HashMap<InputData, PrivateKey>;
-type PublicKeyInputData = HashMap<PublicKey, InputData>;
-
 /// Select UTXOs which the sender controls, at least one of which must be an Inputs For Shared Secret Derivation (IFSSD)
 ///
 /// BDK UTXO includes: OutPoint (txid, vout) and TxOut (value, scriptPubKey) + (internal/external & is_spent)

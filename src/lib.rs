@@ -57,11 +57,11 @@ impl PublicKeySummation {
 /// retrieving the pubkey. VinInfo includes: "outpoint", "scriptSig", "txinwitness", "prevout", and
 /// "private_key"
 #[derive(Hash)]
-struct InputData {
+struct InputData<'a> {
     /// The _scriptPubKey_hex of the prevout
-    pub prevout: ScriptBuf,
-    pub script_sig: Option<ScriptBuf>,
-    pub txinwitness: Option<Witness>,
+    pub prevout: &'a ScriptBuf,
+    pub script_sig: Option<&'a ScriptBuf>,
+    pub txinwitness: Option<&'a Witness>,
 }
 
 #[cfg(test)]
