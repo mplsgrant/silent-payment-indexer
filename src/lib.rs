@@ -60,8 +60,8 @@ impl PublicKeySummation {
 struct InputData {
     /// The _scriptPubKey_hex of the prevout
     pub prevout: ScriptBuf,
-    pub script_sig: ScriptBuf,
-    pub txinwitness: Witness,
+    pub script_sig: Option<ScriptBuf>,
+    pub txinwitness: Option<Witness>,
 }
 
 #[cfg(test)]
