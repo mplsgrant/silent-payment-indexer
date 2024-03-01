@@ -18,7 +18,7 @@ mod sender;
 mod tagged_hashes;
 mod test_data;
 use bitcoin::secp256k1::PublicKey;
-use bitcoin::{ScriptBuf, Witness};
+use bitcoin::{Script, ScriptBuf, Witness};
 
 /// "Nothing Up My Sleeves" number from BIP 341: 0x50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0
 static NUMS: [u8; 32] = [
@@ -59,8 +59,8 @@ impl PublicKeySummation {
 #[derive(Hash)]
 struct InputData<'a> {
     /// The _scriptPubKey_hex of the prevout
-    pub prevout: &'a ScriptBuf,
-    pub script_sig: Option<&'a ScriptBuf>,
+    pub prevout: &'a Script,
+    pub script_sig: Option<&'a Script>,
     pub txinwitness: Option<&'a Witness>,
 }
 
