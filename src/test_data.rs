@@ -1,31 +1,31 @@
 use bitcoin::{secp256k1::SecretKey, ScriptBuf, Txid, Witness};
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(transparent)]
 pub struct BIP352TestVectors {
     pub test_vectors: Vec<BIP352Test>,
 }
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BIP352Test {
     pub comment: String,
     pub sending: Vec<BIP352SendingObject>,
 }
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BIP352SendingObject {
     pub given: BIP352Given,
     pub expected: BIP352Expected,
 }
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BIP352Given {
     pub vin: Vec<BIP352Vin>,
     pub recipients: Vec<Recipients>,
 }
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BIP352Expected {
     pub outputs: Vec<Outputs>,
 }
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BIP352Vin {
     pub txid: Txid,
     pub vout: usize,
@@ -37,24 +37,24 @@ pub struct BIP352Vin {
     pub prevout: BIP352Prevout,
     pub private_key: SecretKey,
 }
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(transparent)]
 pub struct Recipients {
     pub recipients: (SPAddress, f32),
 }
 type SPAddress = String;
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(transparent)]
 pub struct Outputs {
     pub outputs: Output,
 }
 type Output = (Txid, f32);
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BIP352Prevout {
     #[serde(alias = "scriptPubKey")]
     pub script_pubkey: BIP352ScriptPubKey,
 }
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BIP352ScriptPubKey {
     pub hex: String,
 }

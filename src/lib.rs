@@ -56,7 +56,7 @@ impl PublicKeySummation {
 /// This differs from bip-0352's VinInfo because VinInfo contains data not strictly necessary for
 /// retrieving the pubkey. VinInfo includes: "outpoint", "scriptSig", "txinwitness", "prevout", and
 /// "private_key"
-#[derive(Hash)]
+#[derive(Hash, Debug)]
 struct InputData<'a> {
     /// The _scriptPubKey_hex of the prevout
     pub prevout: &'a Script,

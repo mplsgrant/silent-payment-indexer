@@ -9,26 +9,49 @@ use bitcoin::{
 
 use crate::NUMS;
 
+/// Inputs For Shared Secret Derivation (IFSSD) Type provides the input type for the `PublicKey`.
+/// This allows us to perform actions such as negating private keys later on based on whether the
+/// public key has a taproot type
+#[derive(Debug)]
+pub enum IFSSDPubKey {
+    P2PKH { pubkey: PublicKey },
+    P2SH { pubkey: PublicKey },
+    P2WPKH { pubkey: PublicKey },
+    P2TR { pubkey: PublicKey },
+}
+impl IFSSDPubKey {
+    pub fn pubkey(&self) -> &PublicKey {
+        match self {
+            IFSSDPubKey::P2PKH { pubkey } => pubkey,
+            IFSSDPubKey::P2SH { pubkey } => pubkey,
+            IFSSDPubKey::P2WPKH { pubkey } => pubkey,
+            IFSSDPubKey::P2TR { pubkey } => pubkey,
+        }
+    }
+}
+
 /// Get Inputs For Shared Secret Derivation (IFSSD)
 ///
 /// As per BIP 352: "While any UTXO with known output scripts can be used to fund the transaction,
 /// the sender and receiver MUST use inputs from the following list when deriving the shared secret:
 /// P2TR, P2WPKH, P2SH-P2WPKH, P2PKH". Also, "for all of the output types listed, only X-only and
 /// compressed public keys are permitted."
-pub fn get_ifssd(vin: &InputData) -> Option<PublicKey> {
-    if vin.prevout.is_p2pkh() {
-        return get_pubkey_from_p2pkh(vin);
+pub fn get_ifssd(input_data: &InputData) -> Option<IFSSDPubKey> {
+    println!("id_prevout: {:?}", input_data.prevout);
+    if input_data.prevout.is_p2pkh() {
+        return get_pubkey_from_p2pkh(input_data).map(|pubkey| IFSSDPubKey::P2PKH { pubkey });
     }
-    if vin.prevout.is_p2sh() {
-        return get_pubkey_from_p2sh_p2wpkh(vin);
+    if input_data.prevout.is_p2sh() {
+        return get_pubkey_from_p2sh_p2wpkh(input_data).map(|pubkey| IFSSDPubKey::P2SH { pubkey });
     }
-    if vin.prevout.is_p2wpkh() {
-        return get_pubkey_from_p2wpkh(vin);
+    if input_data.prevout.is_p2wpkh() {
+        return get_pubkey_from_p2wpkh(input_data).map(|pubkey| IFSSDPubKey::P2WPKH { pubkey });
     }
-    if vin.prevout.is_p2tr() {
-        return get_pubkey_from_p2tr(vin)
+    if input_data.prevout.is_p2tr() {
+        return get_pubkey_from_p2tr(input_data)
             // For Parity, see BIP 340: "Implicitly choosing the Y coordinate that is even"
-            .map(|xonly_pk| PublicKey::from_x_only_public_key(xonly_pk, Parity::Even));
+            .map(|xonly_pk| PublicKey::from_x_only_public_key(xonly_pk, Parity::Even))
+            .map(|pubkey| IFSSDPubKey::P2TR { pubkey });
     }
     None
 }
@@ -145,7 +168,8 @@ mod tests {
         let pubkey_hash = bitcoin::PublicKey::new(pubkey).pubkey_hash().to_string();
         assert_eq!(pubkey_hash, "19c2f3ae0ca3b642bd3e49598b8da89f50c14161",);
         let pubkey_from_input = get_ifssd(&vin).unwrap();
-        assert_eq!(pubkey, pubkey_from_input);
+        let pubkey_from_input = pubkey_from_input.pubkey();
+        assert_eq!(&pubkey, pubkey_from_input);
     }
 
     #[test]
@@ -164,7 +188,8 @@ mod tests {
         let pubkey_hash = bitcoin::PublicKey::new(pubkey).pubkey_hash().to_string();
         assert_eq!(pubkey_hash, "c82c5ec473cbc6c86e5ef410e36f9495adcf9799",);
         let pubkey_from_input = get_ifssd(&vin).unwrap();
-        assert_eq!(pubkey, pubkey_from_input);
+        let pubkey_from_input = pubkey_from_input.pubkey();
+        assert_eq!(&pubkey, pubkey_from_input);
     }
 
     #[test]
@@ -184,7 +209,8 @@ mod tests {
         let pubkey_hash = bitcoin::PublicKey::new(pubkey).pubkey_hash().to_string();
         assert_eq!(pubkey_hash, "19c2f3ae0ca3b642bd3e49598b8da89f50c14161");
         let pubkey_from_input = get_ifssd(&vin).unwrap();
-        assert_eq!(pubkey, pubkey_from_input);
+        let pubkey_from_input = pubkey_from_input.pubkey();
+        assert_eq!(&pubkey, pubkey_from_input);
     }
     #[test]
     fn basic_get_pubkey_from_p2wpkh() {
@@ -203,7 +229,8 @@ mod tests {
             "19c2f3ae0ca3b642bd3e49598b8da89f50c14161"
         );
         let pubkey_from_input = get_ifssd(&vin).unwrap();
-        assert_eq!(pubkey, pubkey_from_input);
+        let pubkey_from_input = pubkey_from_input.pubkey();
+        assert_eq!(&pubkey, pubkey_from_input);
     }
     #[test]
     fn basic_size_1_get_pubkey_from_p2tr() {
@@ -222,10 +249,13 @@ mod tests {
             maybe_pubkey.unwrap().to_string(),
             "5a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5"
         );
-        let maybe_pubkey_from_input = get_ifssd(&vin);
+        let pubkey_from_input = get_ifssd(&vin).unwrap();
+        let pubkey_from_input = pubkey_from_input.pubkey();
         assert_eq!(
-            maybe_pubkey.map(|xonly| xonly.public_key(Parity::Even)),
-            maybe_pubkey_from_input
+            &maybe_pubkey
+                .map(|xonly| xonly.public_key(Parity::Even))
+                .unwrap(),
+            pubkey_from_input
         );
     }
     #[test]
@@ -245,10 +275,13 @@ mod tests {
             maybe_pubkey.unwrap().to_string(),
             "da6f0595ecb302bbe73e2f221f05ab10f336b06817d36fd28fc6691725ddaa85"
         );
-        let maybe_pubkey_from_input = get_ifssd(&vin);
+        let pubkey_from_input = get_ifssd(&vin).unwrap();
+        let pubkey_from_input = pubkey_from_input.pubkey();
         assert_eq!(
-            maybe_pubkey.map(|xonly| xonly.public_key(Parity::Even)),
-            maybe_pubkey_from_input
+            &maybe_pubkey
+                .map(|xonly| xonly.public_key(Parity::Even))
+                .unwrap(),
+            pubkey_from_input
         );
     }
 }
