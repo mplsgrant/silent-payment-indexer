@@ -1,5 +1,5 @@
 use crate::{
-    pubkey_extraction::{get_ifssd, IFSSDPubKey},
+    pubkey_extraction::{get_input_for_ssd, InputForSSDPubKey},
     InputData,
 };
 use bitcoin::{secp256k1::PublicKey, PrivateKey};
@@ -9,15 +9,17 @@ use std::collections::HashMap;
 ///
 /// BDK UTXO includes: OutPoint (txid, vout) and TxOut (value, scriptPubKey) + (internal/external & is_spent)
 /// InputData inclues:
-pub fn select_utxos<'a>(input_data: &'a [&'a InputData]) -> impl Iterator<Item = IFSSDPubKey> + 'a {
+pub fn select_utxos<'a>(
+    input_data: &'a [&'a InputData],
+) -> impl Iterator<Item = InputForSSDPubKey> + 'a {
     // TODO return Item = &'a PublicKey
-    input_data.iter().flat_map(|data| get_ifssd(data))
+    input_data.iter().flat_map(|data| get_input_for_ssd(data))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{pubkey_extraction::IFSSDPubKey, test_data::BIP352TestVectors};
+    use crate::{pubkey_extraction::InputForSSDPubKey, test_data::BIP352TestVectors};
     use bitcoin::{
         key::{Parity, Secp256k1},
         ScriptBuf,
@@ -42,7 +44,7 @@ mod tests {
     }
 
     #[test]
-    fn get_pubkeys_from_first_test_vector() {
+    fn get_pubkeys_from_test_vectors() {
         let secp = Secp256k1::new();
         let vectors = get_bip352_test_vectors();
         let maybe_public_keys = vectors
@@ -52,7 +54,7 @@ mod tests {
                 println!("{:?}", vector.comment);
                 vector.sending.first()
             })
-            .map(|sending_object| {
+            .flat_map(|sending_object| {
                 sending_object.given.vin.iter().map(|vin| {
                     let prevout = ScriptBuf::from_hex(&vin.prevout.script_pubkey.hex).unwrap();
                     let input_data = InputData {
@@ -60,24 +62,26 @@ mod tests {
                         script_sig: vin.script_sig.as_deref(),
                         txinwitness: vin.txinwitness.as_ref(),
                     };
-                    let frompriv_pubkey = PublicKey::from_secret_key(&secp, &vin.private_key);
-
-                    let ifssd_pubkey = get_ifssd(&input_data).unwrap();
-                    let frompriv_pubkey = if let IFSSDPubKey::P2TR { pubkey } = ifssd_pubkey {
-                        if &frompriv_pubkey.x_only_public_key().1 == &Parity::Odd {
-                            PublicKey::from_secret_key(&secp, &vin.private_key.negate())
+                    let pubkey_from_input_for_ssd = get_input_for_ssd(&input_data).unwrap();
+                    let pubkey_from_secret = PublicKey::from_secret_key(&secp, &vin.private_key);
+                    let serialized =
+                        PublicKey::from_secret_key(&secp, &vin.private_key).serialize();
+                    println!("SERIALIZED: {:02x?}", serialized);
+                    let frompriv_pubkey =
+                        if let InputForSSDPubKey::P2TR { pubkey: _ } = pubkey_from_input_for_ssd {
+                            if pubkey_from_secret.x_only_public_key().1 == Parity::Odd {
+                                PublicKey::from_secret_key(&secp, &vin.private_key.negate())
+                            } else {
+                                pubkey_from_secret
+                            }
                         } else {
-                            frompriv_pubkey
-                        }
-                    } else {
-                        frompriv_pubkey
-                    };
+                            pubkey_from_secret
+                        };
 
-                    assert_eq!(&frompriv_pubkey, ifssd_pubkey.pubkey());
-                    ifssd_pubkey.pubkey().clone()
+                    assert_eq!(&frompriv_pubkey, pubkey_from_input_for_ssd.pubkey());
+                    *pubkey_from_input_for_ssd.pubkey()
                 })
             })
-            .flatten()
             .collect::<Vec<PublicKey>>(); // TODO Fix test as it relates to NUMS
     }
 }

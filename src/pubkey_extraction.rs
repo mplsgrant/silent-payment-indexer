@@ -1,6 +1,8 @@
-use crate::InputData;
+use crate::{InputData, NUMS_PUBKEY};
 use bitcoin::key::constants::PUBLIC_KEY_SIZE;
 use bitcoin::secp256k1::{PublicKey, XOnlyPublicKey};
+use bitcoin::taproot::ControlBlock;
+use bitcoin::Witness;
 use bitcoin::{
     hashes::{hash160, Hash},
     key::Parity,
@@ -9,49 +11,53 @@ use bitcoin::{
 
 use crate::NUMS;
 
-/// Inputs For Shared Secret Derivation (IFSSD) Type provides the input type for the `PublicKey`.
+/// Inputs For Shared Secret Derivation (SSD) Type provides the input type for the `PublicKey`.
 /// This allows us to perform actions such as negating private keys later on based on whether the
 /// public key has a taproot type
 #[derive(Debug)]
-pub enum IFSSDPubKey {
+pub enum InputForSSDPubKey {
     P2PKH { pubkey: PublicKey },
     P2SH { pubkey: PublicKey },
     P2WPKH { pubkey: PublicKey },
     P2TR { pubkey: PublicKey },
+    P2TR_WITH_H,
 }
-impl IFSSDPubKey {
-    pub fn pubkey(&self) -> &PublicKey {
+impl InputForSSDPubKey {
+    pub fn pubkey(&self) -> Option<&PublicKey> {
         match self {
-            IFSSDPubKey::P2PKH { pubkey } => pubkey,
-            IFSSDPubKey::P2SH { pubkey } => pubkey,
-            IFSSDPubKey::P2WPKH { pubkey } => pubkey,
-            IFSSDPubKey::P2TR { pubkey } => pubkey,
+            InputForSSDPubKey::P2PKH { pubkey } => Some(pubkey),
+            InputForSSDPubKey::P2SH { pubkey } => Some(pubkey),
+            InputForSSDPubKey::P2WPKH { pubkey } => Some(pubkey),
+            InputForSSDPubKey::P2TR { pubkey } => Some(pubkey),
+            InputForSSDPubKey::P2TR_WITH_H => None,
         }
     }
 }
 
-/// Get Inputs For Shared Secret Derivation (IFSSD)
+/// Get Inputs For Shared Secret Derivation (SSD)
 ///
 /// As per BIP 352: "While any UTXO with known output scripts can be used to fund the transaction,
 /// the sender and receiver MUST use inputs from the following list when deriving the shared secret:
 /// P2TR, P2WPKH, P2SH-P2WPKH, P2PKH". Also, "for all of the output types listed, only X-only and
 /// compressed public keys are permitted."
-pub fn get_ifssd(input_data: &InputData) -> Option<IFSSDPubKey> {
+pub fn get_input_for_ssd(input_data: &InputData) -> Option<InputForSSDPubKey> {
     println!("id_prevout: {:?}", input_data.prevout);
     if input_data.prevout.is_p2pkh() {
-        return get_pubkey_from_p2pkh(input_data).map(|pubkey| IFSSDPubKey::P2PKH { pubkey });
+        return get_pubkey_from_p2pkh(input_data).map(|pubkey| InputForSSDPubKey::P2PKH { pubkey });
     }
     if input_data.prevout.is_p2sh() {
-        return get_pubkey_from_p2sh_p2wpkh(input_data).map(|pubkey| IFSSDPubKey::P2SH { pubkey });
+        return get_pubkey_from_p2sh_p2wpkh(input_data)
+            .map(|pubkey| InputForSSDPubKey::P2SH { pubkey });
     }
     if input_data.prevout.is_p2wpkh() {
-        return get_pubkey_from_p2wpkh(input_data).map(|pubkey| IFSSDPubKey::P2WPKH { pubkey });
+        return get_pubkey_from_p2wpkh(input_data)
+            .map(|pubkey| InputForSSDPubKey::P2WPKH { pubkey });
     }
     if input_data.prevout.is_p2tr() {
         return get_pubkey_from_p2tr(input_data)
             // For Parity, see BIP 340: "Implicitly choosing the Y coordinate that is even"
             .map(|xonly_pk| PublicKey::from_x_only_public_key(xonly_pk, Parity::Even))
-            .map(|pubkey| IFSSDPubKey::P2TR { pubkey });
+            .map(|pubkey| InputForSSDPubKey::P2TR { pubkey });
     }
     None
 }
@@ -135,16 +141,46 @@ fn get_pubkey_from_p2tr(vin: &InputData) -> Option<XOnlyPublicKey> {
     if txinwitness.len() == 1 {
         return XOnlyPublicKey::from_slice(&vin.prevout.as_bytes()[2..]).ok();
     };
-    txinwitness
-        .tapscript()
-        .map(|witness| &witness.as_bytes()[1..33])
+    println!("TXIN_WITNESS: {:?}", txinwitness);
+    get_control_block_from_witness(txinwitness)
+        .map(|control_block| control_block.internal_key)
         .and_then(|internal_key| {
-            if internal_key == NUMS {
+            println!("INTERNAL_KEY: {:02x?}", internal_key);
+            if internal_key == *NUMS_PUBKEY {
+                println!("GOT NUMS!");
                 None
             } else {
                 XOnlyPublicKey::from_slice(&vin.prevout.as_bytes()[2..]).ok()
             }
         })
+}
+
+fn get_control_block_from_witness(witness: &Witness) -> Option<ControlBlock> {
+    let length = witness.len();
+    if length == 0 {
+        return None;
+    }
+    let length_sans_annex = witness
+        .last()
+        .as_slice()
+        .first()
+        .map(|maybe_annex_byte| {
+            if length >= 2 && maybe_annex_byte == &[0x50u8] {
+                length - 1
+            } else {
+                length
+            }
+        })
+        .unwrap_or(length);
+
+    if length_sans_annex == 1 {
+        return None;
+    }
+    if let Some(control_block_bytes) = witness.nth(length_sans_annex - 1) {
+        ControlBlock::decode(control_block_bytes).ok()
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -167,7 +203,7 @@ mod tests {
         let pubkey = get_pubkey_from_p2pkh(&vin).unwrap();
         let pubkey_hash = bitcoin::PublicKey::new(pubkey).pubkey_hash().to_string();
         assert_eq!(pubkey_hash, "19c2f3ae0ca3b642bd3e49598b8da89f50c14161",);
-        let pubkey_from_input = get_ifssd(&vin).unwrap();
+        let pubkey_from_input = get_input_for_ssd(&vin).unwrap();
         let pubkey_from_input = pubkey_from_input.pubkey();
         assert_eq!(&pubkey, pubkey_from_input);
     }
@@ -187,7 +223,7 @@ mod tests {
         let pubkey = get_pubkey_from_p2pkh(&vin).unwrap();
         let pubkey_hash = bitcoin::PublicKey::new(pubkey).pubkey_hash().to_string();
         assert_eq!(pubkey_hash, "c82c5ec473cbc6c86e5ef410e36f9495adcf9799",);
-        let pubkey_from_input = get_ifssd(&vin).unwrap();
+        let pubkey_from_input = get_input_for_ssd(&vin).unwrap();
         let pubkey_from_input = pubkey_from_input.pubkey();
         assert_eq!(&pubkey, pubkey_from_input);
     }
@@ -208,7 +244,7 @@ mod tests {
         let pubkey = get_pubkey_from_p2sh_p2wpkh(&vin).unwrap();
         let pubkey_hash = bitcoin::PublicKey::new(pubkey).pubkey_hash().to_string();
         assert_eq!(pubkey_hash, "19c2f3ae0ca3b642bd3e49598b8da89f50c14161");
-        let pubkey_from_input = get_ifssd(&vin).unwrap();
+        let pubkey_from_input = get_input_for_ssd(&vin).unwrap();
         let pubkey_from_input = pubkey_from_input.pubkey();
         assert_eq!(&pubkey, pubkey_from_input);
     }
@@ -228,7 +264,7 @@ mod tests {
             pubkey_hash.to_string(),
             "19c2f3ae0ca3b642bd3e49598b8da89f50c14161"
         );
-        let pubkey_from_input = get_ifssd(&vin).unwrap();
+        let pubkey_from_input = get_input_for_ssd(&vin).unwrap();
         let pubkey_from_input = pubkey_from_input.pubkey();
         assert_eq!(&pubkey, pubkey_from_input);
     }
@@ -249,7 +285,7 @@ mod tests {
             maybe_pubkey.unwrap().to_string(),
             "5a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5"
         );
-        let pubkey_from_input = get_ifssd(&vin).unwrap();
+        let pubkey_from_input = get_input_for_ssd(&vin).unwrap();
         let pubkey_from_input = pubkey_from_input.pubkey();
         assert_eq!(
             &maybe_pubkey
@@ -275,7 +311,7 @@ mod tests {
             maybe_pubkey.unwrap().to_string(),
             "da6f0595ecb302bbe73e2f221f05ab10f336b06817d36fd28fc6691725ddaa85"
         );
-        let pubkey_from_input = get_ifssd(&vin).unwrap();
+        let pubkey_from_input = get_input_for_ssd(&vin).unwrap();
         let pubkey_from_input = pubkey_from_input.pubkey();
         assert_eq!(
             &maybe_pubkey

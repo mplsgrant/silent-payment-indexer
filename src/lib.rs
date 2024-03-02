@@ -18,13 +18,15 @@ mod sender;
 mod tagged_hashes;
 mod test_data;
 use bitcoin::secp256k1::PublicKey;
-use bitcoin::{Script, ScriptBuf, Witness};
+use bitcoin::{Script, ScriptBuf, Witness, XOnlyPublicKey};
+use once_cell::sync::Lazy;
 
 /// "Nothing Up My Sleeves" number from BIP 341: 0x50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0
 static NUMS: [u8; 32] = [
     80, 146, 155, 116, 193, 160, 73, 84, 183, 139, 75, 96, 53, 233, 122, 94, 7, 138, 90, 15, 40,
     236, 150, 213, 71, 191, 238, 154, 206, 128, 58, 192,
 ];
+static NUMS_PUBKEY: Lazy<XOnlyPublicKey> = Lazy::new(|| XOnlyPublicKey::from_slice(&NUMS).unwrap());
 
 /// The test data file contains these "given" items
 struct TestDataGiven {
