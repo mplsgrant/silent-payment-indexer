@@ -20,7 +20,7 @@ pub enum InputForSSDPubKey {
     P2SH { pubkey: PublicKey },
     P2WPKH { pubkey: PublicKey },
     P2TR { pubkey: PublicKey },
-    P2TR_WITH_H,
+    P2TRWithH,
 }
 impl InputForSSDPubKey {
     pub fn pubkey(&self) -> Option<&PublicKey> {
@@ -29,7 +29,7 @@ impl InputForSSDPubKey {
             InputForSSDPubKey::P2SH { pubkey } => Some(pubkey),
             InputForSSDPubKey::P2WPKH { pubkey } => Some(pubkey),
             InputForSSDPubKey::P2TR { pubkey } => Some(pubkey),
-            InputForSSDPubKey::P2TR_WITH_H => None,
+            InputForSSDPubKey::P2TRWithH => None,
         }
     }
 }
@@ -54,10 +54,18 @@ pub fn get_input_for_ssd(input_data: &InputData) -> Option<InputForSSDPubKey> {
             .map(|pubkey| InputForSSDPubKey::P2WPKH { pubkey });
     }
     if input_data.prevout.is_p2tr() {
-        return get_pubkey_from_p2tr(input_data)
-            // For Parity, see BIP 340: "Implicitly choosing the Y coordinate that is even"
-            .map(|xonly_pk| PublicKey::from_x_only_public_key(xonly_pk, Parity::Even))
-            .map(|pubkey| InputForSSDPubKey::P2TR { pubkey });
+        return if let Some(xonly_scenario) = get_pubkey_from_p2tr(input_data) {
+            match xonly_scenario {
+                XOnlyScenario::XOnly(xonly_pk) => {
+                    // For Parity, see BIP 340: "Implicitly choosing the Y coordinate that is even"
+                    let pubkey = PublicKey::from_x_only_public_key(xonly_pk, Parity::Even);
+                    Some(InputForSSDPubKey::P2TR { pubkey })
+                }
+                XOnlyScenario::XOnlyWithH => Some(InputForSSDPubKey::P2TRWithH),
+            }
+        } else {
+            None
+        };
     }
     None
 }
@@ -131,15 +139,19 @@ fn get_pubkey_from_p2wpkh(vin: &InputData) -> Option<PublicKey> {
         .and_then(|maybe_pubkey| PublicKey::from_slice(maybe_pubkey).ok())
 }
 
-fn get_pubkey_from_p2tr(vin: &InputData) -> Option<XOnlyPublicKey> {
-    // TODO Why does tapscript() give us Script when BIP 141 says that "Witness data is NOT script."
+fn get_pubkey_from_p2tr(vin: &InputData) -> Option<XOnlyScenario> {
     let txinwitness = if let Some(txinwitness) = &vin.txinwitness {
         txinwitness
     } else {
         return None;
     };
     if txinwitness.len() == 1 {
-        return XOnlyPublicKey::from_slice(&vin.prevout.as_bytes()[2..]).ok();
+        //  Keypath spend
+        return if let Ok(xonly) = XOnlyPublicKey::from_slice(&vin.prevout.as_bytes()[2..]) {
+            Some(XOnlyScenario::XOnly(xonly))
+        } else {
+            None
+        };
     };
     println!("TXIN_WITNESS: {:?}", txinwitness);
     get_control_block_from_witness(txinwitness)
@@ -148,11 +160,19 @@ fn get_pubkey_from_p2tr(vin: &InputData) -> Option<XOnlyPublicKey> {
             println!("INTERNAL_KEY: {:02x?}", internal_key);
             if internal_key == *NUMS_PUBKEY {
                 println!("GOT NUMS!");
-                None
+                Some(XOnlyScenario::XOnlyWithH)
+            } else if let Ok(xonly) = XOnlyPublicKey::from_slice(&vin.prevout.as_bytes()[2..]) {
+                Some(XOnlyScenario::XOnly(xonly))
             } else {
-                XOnlyPublicKey::from_slice(&vin.prevout.as_bytes()[2..]).ok()
+                None
             }
         })
+}
+
+#[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
+pub enum XOnlyScenario {
+    XOnly(XOnlyPublicKey),
+    XOnlyWithH,
 }
 
 fn get_control_block_from_witness(witness: &Witness) -> Option<ControlBlock> {
@@ -204,8 +224,13 @@ mod tests {
         let pubkey_hash = bitcoin::PublicKey::new(pubkey).pubkey_hash().to_string();
         assert_eq!(pubkey_hash, "19c2f3ae0ca3b642bd3e49598b8da89f50c14161",);
         let pubkey_from_input = get_input_for_ssd(&vin).unwrap();
-        let pubkey_from_input = pubkey_from_input.pubkey();
-        assert_eq!(&pubkey, pubkey_from_input);
+        match pubkey_from_input {
+            InputForSSDPubKey::P2PKH { pubkey } => {
+                let pubkey_from_input = pubkey_from_input.pubkey();
+                assert_eq!(pubkey, *pubkey_from_input.unwrap());
+            }
+            _ => panic!("was expecting p2pkh"),
+        }
     }
 
     #[test]
@@ -224,8 +249,13 @@ mod tests {
         let pubkey_hash = bitcoin::PublicKey::new(pubkey).pubkey_hash().to_string();
         assert_eq!(pubkey_hash, "c82c5ec473cbc6c86e5ef410e36f9495adcf9799",);
         let pubkey_from_input = get_input_for_ssd(&vin).unwrap();
-        let pubkey_from_input = pubkey_from_input.pubkey();
-        assert_eq!(&pubkey, pubkey_from_input);
+        match pubkey_from_input {
+            InputForSSDPubKey::P2PKH { pubkey } => {
+                let pubkey_from_input = pubkey_from_input.pubkey();
+                assert_eq!(pubkey, *pubkey_from_input.unwrap());
+            }
+            _ => panic!("was expecting p2pkh"),
+        }
     }
 
     #[test]
@@ -245,8 +275,13 @@ mod tests {
         let pubkey_hash = bitcoin::PublicKey::new(pubkey).pubkey_hash().to_string();
         assert_eq!(pubkey_hash, "19c2f3ae0ca3b642bd3e49598b8da89f50c14161");
         let pubkey_from_input = get_input_for_ssd(&vin).unwrap();
-        let pubkey_from_input = pubkey_from_input.pubkey();
-        assert_eq!(&pubkey, pubkey_from_input);
+        match pubkey_from_input {
+            InputForSSDPubKey::P2SH { pubkey } => {
+                let pubkey_from_input = pubkey_from_input.pubkey();
+                assert_eq!(pubkey, *pubkey_from_input.unwrap());
+            }
+            _ => panic!("was only expecting p2sh-p2wpkh"),
+        }
     }
     #[test]
     fn basic_get_pubkey_from_p2wpkh() {
@@ -265,8 +300,13 @@ mod tests {
             "19c2f3ae0ca3b642bd3e49598b8da89f50c14161"
         );
         let pubkey_from_input = get_input_for_ssd(&vin).unwrap();
-        let pubkey_from_input = pubkey_from_input.pubkey();
-        assert_eq!(&pubkey, pubkey_from_input);
+        match pubkey_from_input {
+            InputForSSDPubKey::P2WPKH { pubkey } => {
+                let pubkey_from_input = pubkey_from_input.pubkey();
+                assert_eq!(pubkey, *pubkey_from_input.unwrap());
+            }
+            _ => panic!("was only expecting p2wpkh"),
+        }
     }
     #[test]
     fn basic_size_1_get_pubkey_from_p2tr() {
@@ -280,22 +320,22 @@ mod tests {
             script_sig: None,
             txinwitness: Some(&witness),
         };
-        let maybe_pubkey = get_pubkey_from_p2tr(&vin);
-        assert_eq!(
-            maybe_pubkey.unwrap().to_string(),
-            "5a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5"
-        );
-        let pubkey_from_input = get_input_for_ssd(&vin).unwrap();
-        let pubkey_from_input = pubkey_from_input.pubkey();
-        assert_eq!(
-            &maybe_pubkey
-                .map(|xonly| xonly.public_key(Parity::Even))
-                .unwrap(),
-            pubkey_from_input
-        );
+        let xonly_scenario = get_pubkey_from_p2tr(&vin).unwrap();
+        match xonly_scenario {
+            XOnlyScenario::XOnly(pubkey) => {
+                assert_eq!(
+                    pubkey.to_string(),
+                    "5a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5"
+                );
+                let pubkey_from_input = get_input_for_ssd(&vin).unwrap();
+                let pubkey_from_input = pubkey_from_input.pubkey();
+                assert_eq!(pubkey.public_key(Parity::Even), *pubkey_from_input.unwrap());
+            }
+            XOnlyScenario::XOnlyWithH => panic!("was not expecting H"),
+        }
     }
     #[test]
-    fn basic_size_4_get_pubkey_from_p2tr() {
+    fn basic_size_4_get_pubkey_from_p2tr_with_h() {
         let witness = deserialize::<Witness>(&hex!("0440c459b671370d12cfb5acee76da7e3ba7cc29b0b4653e3af8388591082660137d087fdc8e89a612cd5d15be0febe61fc7cdcf3161a26e599a4514aa5c3e86f47b22205a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5ac21c150929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac00150")).unwrap();
         let prevout = ScriptBuf::from_hex(
             "5120da6f0595ecb302bbe73e2f221f05ab10f336b06817d36fd28fc6691725ddaa85",
@@ -306,18 +346,19 @@ mod tests {
             script_sig: None,
             txinwitness: Some(&witness),
         };
-        let maybe_pubkey = get_pubkey_from_p2tr(&vin);
-        assert_eq!(
-            maybe_pubkey.unwrap().to_string(),
-            "da6f0595ecb302bbe73e2f221f05ab10f336b06817d36fd28fc6691725ddaa85"
-        );
-        let pubkey_from_input = get_input_for_ssd(&vin).unwrap();
-        let pubkey_from_input = pubkey_from_input.pubkey();
-        assert_eq!(
-            &maybe_pubkey
-                .map(|xonly| xonly.public_key(Parity::Even))
-                .unwrap(),
-            pubkey_from_input
-        );
+        let xonly_scenario = get_pubkey_from_p2tr(&vin).unwrap();
+        match xonly_scenario {
+            XOnlyScenario::XOnly(_pubkey) => {
+                // assert_eq!(
+                //     pubkey.to_string(),
+                //     "da6f0595ecb302bbe73e2f221f05ab10f336b06817d36fd28fc6691725ddaa85"
+                // );
+                // let pubkey_from_input = get_input_for_ssd(&vin).unwrap();
+                // let pubkey_from_input = pubkey_from_input.pubkey();
+                // assert_eq!(pubkey.public_key(Parity::Even), *pubkey_from_input.unwrap());
+                panic!("Was expecting H")
+            }
+            XOnlyScenario::XOnlyWithH => {}
+        }
     }
 }

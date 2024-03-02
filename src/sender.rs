@@ -47,28 +47,21 @@ mod tests {
     fn get_pubkeys_from_test_vectors() {
         let secp = Secp256k1::new();
         let vectors = get_bip352_test_vectors();
-        let maybe_public_keys = vectors
-            .test_vectors
-            .iter()
-            .flat_map(|vector| {
-                println!("{:?}", vector.comment);
-                vector.sending.first()
-            })
-            .flat_map(|sending_object| {
-                sending_object.given.vin.iter().map(|vin| {
+        vectors.test_vectors.iter().for_each(|vector| {
+            for sending_object in &vector.sending {
+                sending_object.given.vin.iter().for_each(|vin| {
                     let prevout = ScriptBuf::from_hex(&vin.prevout.script_pubkey.hex).unwrap();
                     let input_data = InputData {
                         prevout: &prevout,
                         script_sig: vin.script_sig.as_deref(),
                         txinwitness: vin.txinwitness.as_ref(),
                     };
-                    let pubkey_from_input_for_ssd = get_input_for_ssd(&input_data).unwrap();
-                    let pubkey_from_secret = PublicKey::from_secret_key(&secp, &vin.private_key);
-                    let serialized =
-                        PublicKey::from_secret_key(&secp, &vin.private_key).serialize();
-                    println!("SERIALIZED: {:02x?}", serialized);
-                    let frompriv_pubkey =
-                        if let InputForSSDPubKey::P2TR { pubkey: _ } = pubkey_from_input_for_ssd {
+                    if let Some(pubkey_from_input_for_ssd) = get_input_for_ssd(&input_data) {
+                        let pubkey_from_secret =
+                            PublicKey::from_secret_key(&secp, &vin.private_key);
+                        let pubkey_from_secret = if let InputForSSDPubKey::P2TR { pubkey: _ } =
+                            pubkey_from_input_for_ssd
+                        {
                             if pubkey_from_secret.x_only_public_key().1 == Parity::Odd {
                                 PublicKey::from_secret_key(&secp, &vin.private_key.negate())
                             } else {
@@ -77,11 +70,34 @@ mod tests {
                         } else {
                             pubkey_from_secret
                         };
-
-                    assert_eq!(&frompriv_pubkey, pubkey_from_input_for_ssd.pubkey());
-                    *pubkey_from_input_for_ssd.pubkey()
-                })
-            })
-            .collect::<Vec<PublicKey>>(); // TODO Fix test as it relates to NUMS
+                        match pubkey_from_input_for_ssd {
+                            InputForSSDPubKey::P2PKH { pubkey } => {
+                                assert_eq!(pubkey_from_secret, pubkey);
+                                Some(pubkey)
+                            }
+                            InputForSSDPubKey::P2SH { pubkey } => {
+                                assert_eq!(pubkey_from_secret, pubkey);
+                                Some(pubkey)
+                            }
+                            InputForSSDPubKey::P2WPKH { pubkey } => {
+                                assert_eq!(pubkey_from_secret, pubkey);
+                                Some(pubkey)
+                            }
+                            InputForSSDPubKey::P2TR { pubkey } => {
+                                assert_eq!(pubkey_from_secret, pubkey);
+                                Some(pubkey)
+                            }
+                            InputForSSDPubKey::P2TRWithH => None,
+                        };
+                    } else {
+                        assert!([
+                            "P2PKH and P2WPKH Uncompressed Keys are skipped",
+                            "Skip invalid P2SH inputs"
+                        ]
+                        .contains(&vector.comment.as_str()));
+                    }
+                });
+            }
+        });
     }
 }
