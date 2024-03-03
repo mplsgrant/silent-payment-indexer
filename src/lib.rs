@@ -28,17 +28,6 @@ static NUMS: [u8; 32] = [
 ];
 static NUMS_PUBKEY: Lazy<XOnlyPublicKey> = Lazy::new(|| XOnlyPublicKey::from_slice(&NUMS).unwrap());
 
-/// The test data file contains these "given" items
-struct TestDataGiven {
-    pub txid: String,
-    pub vout: u32,
-    pub script_sig: ScriptBuf,
-    pub txinwitness: String,
-    /// The _scriptPubKey_hex of the prevout
-    pub prevout: ScriptBuf,
-    pub private_key: String,
-}
-
 struct PublicKeySummation {
     inner: PublicKey,
 }

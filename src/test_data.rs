@@ -124,7 +124,7 @@ mod empty_scriptsig_is_none {
             None | Some("") => Ok(None),
             Some(s) => {
                 let reader = Vec::from_hex(s).unwrap();
-                let mut reader = reader.as_slice();
+                let reader = reader.as_slice();
                 let w = ScriptBuf::from_hex(s).expect("script_sig deserialization issue");
                 Ok(Some(w))
             }
