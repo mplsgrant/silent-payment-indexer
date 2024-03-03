@@ -380,7 +380,7 @@ mod tests {
     }
 
     #[test]
-    fn pubkeys_from_secret_match_pubkeys_from_get_input_for_sdd() {
+    fn the_pubkeys_from_privkey_match_the_pubkeys_from_the_get_input_for_sdd_function() {
         let secp = Secp256k1::new();
         let vectors = get_bip352_test_vectors();
         vectors.test_vectors.iter().for_each(|vector| {
