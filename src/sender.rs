@@ -38,7 +38,7 @@ mod tests {
     }
 
     #[test]
-    fn get_pubkeys_from_test_vectors() {
+    fn pubkeys_from_secret_match_pubkeys_from_get_input_for_sdd() {
         let secp = Secp256k1::new();
         let vectors = get_bip352_test_vectors();
         vectors.test_vectors.iter().for_each(|vector| {
