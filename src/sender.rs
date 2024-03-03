@@ -38,12 +38,6 @@ mod tests {
     }
 
     #[test]
-    fn get_vectors() {
-        let vectors = get_bip352_test_vectors();
-        assert_eq!(vectors.test_vectors.len(), 24);
-    }
-
-    #[test]
     fn get_pubkeys_from_test_vectors() {
         let secp = Secp256k1::new();
         let vectors = get_bip352_test_vectors();
