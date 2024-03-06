@@ -32,3 +32,6 @@ This indexer helps with Silent Payments by searching through the blockchain for 
  ┗━━━━━━━━━━┹──────────────────────╯ within.
 
 ```
+
+# Out links
+[Bitcoin Core PR Review Club](https://bitcoincore.reviews/28122)
