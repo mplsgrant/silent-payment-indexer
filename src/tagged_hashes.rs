@@ -77,9 +77,18 @@ impl InputsHash {
     }
 }
 
+impl SharedSecretHash {
+    pub fn new(shared_secret: &PublicKey, k: u32) -> SharedSecretHash {
+        let mut eng = SharedSecretHash::engine();
+        eng.input(&shared_secret.serialize());
+        eng.input(&k.to_be_bytes());
+        SharedSecretHash::from_engine(eng)
+    }
+}
+
 impl LabelTagHash {
     pub fn new(b_scan: PublicKey, m: u32) -> LabelTagHash {
-        let mut eng = InputsHash::engine();
+        let mut eng = LabelTagHash::engine();
         eng.input(&b_scan.serialize());
         eng.input(&m.to_be_bytes());
         LabelTagHash::from_engine(eng)

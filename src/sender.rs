@@ -35,7 +35,10 @@ mod tests {
     use bitcoin_hashes::Hash;
 
     use super::*;
-    use crate::test_data::{BIP352TestVectors, BIP352Vin, Recipient};
+    use crate::{
+        tagged_hashes::SharedSecretHash,
+        test_data::{BIP352TestVectors, BIP352Vin, Recipient},
+    };
 
     use std::{
         collections::{BTreeMap, BTreeSet, HashMap},
@@ -140,7 +143,7 @@ mod tests {
                     }
                     _ => None,
                 };
-                let grouping = test_vectors
+                let outputs = test_vectors
                     .test_vectors
                     .iter()
                     .flat_map(|test| test.sending.iter())
@@ -166,29 +169,53 @@ mod tests {
                                 .push((b_m, amount));
                             grouping
                         },
+                    )
+                    .iter()
+                    .map(|(b_scan, b_m_and_amounts)| {
+                        // Sort for sole purpose of keeping the tests determininstic.
+                        let mut b_m_and_amounts_sorted = b_m_and_amounts.clone();
+                        b_m_and_amounts_sorted
+                            .sort_by(|(_, a_amount), (_, b_amount)| a_amount.cmp(b_amount));
+                        (b_scan, b_m_and_amounts_sorted)
+                    })
+                    .flat_map(|(b_scan, b_m_and_amounts)| {
+                        match (maybe_input_hash, maybe_secret_key_summation) {
+                            (Some(input_hash), Some(secret_key_summation)) => {
+                                //  input_hash·a·Bscan
+                                let input_hash_scalar =
+                                    Scalar::from_be_bytes(input_hash.to_byte_array())
+                                        .expect("input_hash converts to scalar");
+                                let secret_key_summation_scalar =
+                                    Scalar::from_be_bytes(secret_key_summation.secret_bytes())
+                                        .expect("secret keys convert to scalar");
+                                let input_hash_bscan = b_scan
+                                    .mul_tweak(&secp, &input_hash_scalar)
+                                    .expect("scalars multiply");
+                                let ecdh_shared_secret = input_hash_bscan
+                                    .mul_tweak(&secp, &secret_key_summation_scalar)
+                                    .expect("secret scalars multiply");
+                                Some((ecdh_shared_secret, b_m_and_amounts))
+                            }
+                            _ => None,
+                        }
+                    })
+                    .fold(
+                        Vec::<(PublicKey, Amount)>::new(),
+                        |mut pubkey_with_amount, (ecdh_shared_secret, b_m_and_amounts)| {
+                            b_m_and_amounts.iter().map(|(b_m, amount)| {
+                                let mut k = 0;
+                                let t_k = SharedSecretHash::new(&ecdh_shared_secret, k);
+                                let t_k = Scalar::from_be_bytes(t_k.to_byte_array())
+                                    .expect("hashes convert to scalars");
+                                let p_km = b_m
+                                    .add_exp_tweak(&secp, &t_k)
+                                    .expect("public keys get tweaked cleanly");
+                                k += 1;
+                                pubkey_with_amount.push((p_km, *amount));
+                            });
+                            pubkey_with_amount
+                        },
                     );
-
-                // .map(|(b_scan, (b_m, amount))| {
-                //     match (maybe_input_hash, maybe_secret_key_summation) {
-                //         (Some(input_hash), Some(secret_key_summation)) => {
-                //             //  input_hash·a·Bscan
-                //             let input_hash_scalar =
-                //                 Scalar::from_be_bytes(input_hash.to_byte_array())
-                //                     .expect("input_hash converts to scalar");
-                //             let secret_key_summation_scalar =
-                //                 Scalar::from_be_bytes(secret_key_summation.secret_bytes())
-                //                     .expect("secret keys convert to scalar");
-                //             let input_hash_bscan = b_scan
-                //                 .mul_tweak(&secp, &input_hash_scalar)
-                //                 .expect("scalars multiply");
-                //             let ecdh_shared_secret = input_hash_bscan
-                //                 .mul_tweak(&secp, &secret_key_summation_scalar)
-                //                 .expect("secret scalars multiply");
-                //             Some(ecdh_shared_secret)
-                //         }
-                //         _ => None,
-                //     }
-                // });
             })
             .for_each(drop);
 
