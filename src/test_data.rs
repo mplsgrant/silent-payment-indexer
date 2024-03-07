@@ -19,7 +19,7 @@ pub struct BIP352SendingObject {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BIP352Given {
     pub vin: Vec<BIP352Vin>,
-    pub recipients: Vec<Recipients>,
+    pub recipients: Vec<Recipient>,
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BIP352Expected {
@@ -28,7 +28,7 @@ pub struct BIP352Expected {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BIP352Vin {
     pub txid: Txid,
-    pub vout: usize,
+    pub vout: u32,
     #[serde(alias = "scriptSig")]
     #[serde(with = "empty_scriptsig_is_none")]
     pub script_sig: Option<ScriptBuf>,
@@ -39,8 +39,8 @@ pub struct BIP352Vin {
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(transparent)]
-pub struct Recipients {
-    pub recipients: (SPAddress, f32),
+pub struct Recipient {
+    pub recipient: (SPAddress, f32),
 }
 type SPAddress = String;
 #[derive(Serialize, Deserialize, Clone, Debug)]

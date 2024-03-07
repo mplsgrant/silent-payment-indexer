@@ -41,7 +41,6 @@ impl InputForSSDPubKey {
 /// P2TR, P2WPKH, P2SH-P2WPKH, P2PKH". Also, "for all of the output types listed, only X-only and
 /// compressed public keys are permitted."
 pub fn get_input_for_ssd(input_data: &InputData) -> Option<InputForSSDPubKey> {
-    println!("id_prevout: {:?}", input_data.prevout);
     if input_data.prevout.is_p2pkh() {
         return get_pubkey_from_p2pkh(input_data).map(|pubkey| InputForSSDPubKey::P2PKH { pubkey });
     }

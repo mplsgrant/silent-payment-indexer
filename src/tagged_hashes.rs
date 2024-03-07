@@ -21,16 +21,19 @@ use bitcoin_hashes::{sha256t_hash_newtype, Hash, HashEngine};
 use crate::PublicKeySummation;
 
 /// Need to use the smallest outpoint when tagging input values
-struct SmallestOutpoint {
+pub struct SmallestOutpoint {
     inner: OutPoint,
 }
 impl SmallestOutpoint {
-    fn new(outpoints: &[OutPoint]) -> Option<Self> {
+    pub fn new(outpoints: &[OutPoint]) -> Option<Self> {
         let mut a = BTreeSet::new();
         for outpoint in outpoints {
             a.insert(outpoint);
         }
         a.into_iter().next().map(|z| Self { inner: *z })
+    }
+    pub fn from_btreeset(btree: &BTreeSet<&OutPoint>) -> Option<Self> {
+        btree.iter().next().map(|z| Self { inner: **z })
     }
     fn outpoint(&self) -> OutPoint {
         self.inner
@@ -44,11 +47,18 @@ sha256t_hash_newtype! {
     /// outpoint
     #[hash_newtype(forward)]
     pub struct InputsHash(_);
+
+    pub struct SharedSecretTag = hash_str("BIP0352/SharedSecret");
+
+    /// Hash of the sum of the shared secret
+    #[hash_newtype(forward)]
+    pub struct SharedSecretHash(_);
+
 }
 
 impl InputsHash {
     /// outpoint is the lexicographically smallest, and input_summation is the contributing public keys
-    fn from_outpoint_and_input_summation(
+    pub fn from_outpoint_and_input_summation(
         outpoint: SmallestOutpoint,
         input_summation: &PublicKeySummation,
     ) -> InputsHash {
