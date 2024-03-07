@@ -15,7 +15,7 @@
 
 use std::collections::BTreeSet;
 
-use bitcoin::{consensus::Encodable, OutPoint};
+use bitcoin::{consensus::Encodable, secp256k1::PublicKey, OutPoint};
 use bitcoin_hashes::{sha256t_hash_newtype, Hash, HashEngine};
 
 use crate::PublicKeySummation;
@@ -41,6 +41,7 @@ impl SmallestOutpoint {
 }
 
 sha256t_hash_newtype! {
+    /// InputsTag: "BIP0352/Inputs"
     pub struct InputsTag = hash_str("BIP0352/Inputs");
 
     /// Hash of the sum of the input public keys concatenated with the lexicographically smallest
@@ -48,20 +49,24 @@ sha256t_hash_newtype! {
     #[hash_newtype(forward)]
     pub struct InputsHash(_);
 
+    /// SharedSecretTag: "BIP0352/SharedSecret"
     pub struct SharedSecretTag = hash_str("BIP0352/SharedSecret");
 
     /// Hash of the sum of the shared secret
     #[hash_newtype(forward)]
     pub struct SharedSecretHash(_);
 
+    /// LabelTag: "BIP0352/Label"
+    pub struct LabelTag = hash_str("BIP0352/Label");
+
+    /// Hash of the label to support "m" labels
+    #[hash_newtype(forward)]
+    pub struct LabelTagHash(_);
 }
 
 impl InputsHash {
     /// outpoint is the lexicographically smallest, and input_summation is the contributing public keys
-    pub fn from_outpoint_and_input_summation(
-        outpoint: SmallestOutpoint,
-        input_summation: &PublicKeySummation,
-    ) -> InputsHash {
+    pub fn new(outpoint: SmallestOutpoint, input_summation: &PublicKeySummation) -> InputsHash {
         let mut eng = InputsHash::engine();
         outpoint
             .outpoint()
@@ -69,6 +74,15 @@ impl InputsHash {
             .expect("engines don't error");
         eng.input(&input_summation.public_key().serialize());
         InputsHash::from_engine(eng)
+    }
+}
+
+impl LabelTagHash {
+    pub fn new(b_scan: PublicKey, m: u32) -> LabelTagHash {
+        let mut eng = InputsHash::engine();
+        eng.input(&b_scan.serialize());
+        eng.input(&m.to_be_bytes());
+        LabelTagHash::from_engine(eng)
     }
 }
 

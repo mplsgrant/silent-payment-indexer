@@ -1,8 +1,13 @@
+use bitcoin::secp256k1::PublicKey;
+
 use crate::{
     pubkey_extraction::{get_input_for_ssd, InputForSSDPubKey},
     tagged_hashes::{InputsHash, SmallestOutpoint},
     InputData, PublicKeySummation,
 };
+
+type BScan = PublicKey;
+type Bm = PublicKey;
 
 /// Select UTXOs which the sender controls, at least one of which must be an Inputs For Shared Secret Derivation (IFSSD)
 ///
@@ -16,7 +21,7 @@ pub fn select_utxos<'a>(
 }
 
 pub fn generate_input_hash(outpoint: SmallestOutpoint, input_summation: PublicKeySummation) {
-    let input_hash = InputsHash::from_outpoint_and_input_summation(outpoint, &input_summation);
+    let input_hash = InputsHash::new(outpoint, &input_summation);
 }
 
 #[cfg(test)]
@@ -25,14 +30,18 @@ mod tests {
         bech32::{self, Bech32},
         key::{Parity, Secp256k1},
         secp256k1::{PublicKey, Scalar, SecretKey},
-        OutPoint, Script, ScriptBuf, XOnlyPublicKey,
+        Amount, OutPoint, Script, ScriptBuf, XOnlyPublicKey,
     };
     use bitcoin_hashes::Hash;
 
     use super::*;
     use crate::test_data::{BIP352TestVectors, BIP352Vin, Recipient};
 
-    use std::{collections::BTreeSet, fs::File, io::Read};
+    use std::{
+        collections::{BTreeMap, BTreeSet, HashMap},
+        fs::File,
+        io::Read,
+    };
 
     fn get_bip352_test_vectors() -> BIP352TestVectors {
         let path = format!(
@@ -76,7 +85,7 @@ mod tests {
                     .fold(
                         (
                             Vec::<SecretKey>::new(),
-                            Vec::<&PublicKey>::new(),
+                            Vec::<PublicKey>::new(),
                             BTreeSet::<OutPoint>::new(),
                         ),
                         |(mut priv_keys, mut pubkeys, mut btree),
@@ -103,7 +112,7 @@ mod tests {
                             };
 
                             priv_keys.push(private_key);
-                            pubkeys.push(&pubkey);
+                            pubkeys.push(pubkey);
                             (priv_keys, pubkeys, btree)
                         },
                     );
@@ -123,48 +132,63 @@ mod tests {
                         })
                     });
 
+                let pubkeys: Vec<&PublicKey> = pubkeys.iter().collect(); // TODO Can we push the referencing up?
                 let maybe_pubkey_summation = PublicKeySummation::new(pubkeys.as_slice());
                 let maybe_input_hash = match (maybe_smallest_outpoint, maybe_pubkey_summation) {
                     (Some(smallest_outpoint), Some(pubkey_summation)) => {
-                        Some(InputsHash::from_outpoint_and_input_summation(
-                            smallest_outpoint,
-                            &pubkey_summation,
-                        ))
+                        Some(InputsHash::new(smallest_outpoint, &pubkey_summation))
                     }
                     _ => None,
                 };
-                let recipients = test_vectors
+                let grouping = test_vectors
                     .test_vectors
                     .iter()
                     .flat_map(|test| test.sending.iter())
                     .flat_map(|sending| sending.given.recipients.iter())
-                    .map(|recipient| bech32::decode(&recipient.recipient.0).expect("recipient"))
-                    .map(|(_, keys)| {
-                        let b_scan = PublicKey::from_slice(&keys[0..33]).expect("b_scan key fits");
-                        let b_m = PublicKey::from_slice(&keys[33..66]).expect("b_m key fits");
-                        (b_scan, b_m)
+                    .map(|recipient| {
+                        (
+                            bech32::decode(&recipient.recipient.0).expect("recipient"),
+                            Amount::from_btc(recipient.recipient.1 as f64) // TODO reconcile f64 vs f32
+                                .expect("test amount parses fine"),
+                        )
                     })
-                    .map(
-                        |(b_scan, b_m)| match (maybe_input_hash, maybe_secret_key_summation) {
-                            (Some(input_hash), Some(secret_key_summation)) => {
-                                //  input_hash·a·Bscan
-                                let input_hash_scalar =
-                                    Scalar::from_be_bytes(input_hash.to_byte_array())
-                                        .expect("input_hash converts to scalar");
-                                let secret_key_summation_scalar =
-                                    Scalar::from_be_bytes(secret_key_summation.secret_bytes())
-                                        .expect("secret keys convert to scalar");
-                                let input_hash_bscan = b_scan
-                                    .mul_tweak(&secp, &input_hash_scalar)
-                                    .expect("scalars multiply");
-                                let ecdh_shared_secret = input_hash_bscan
-                                    .mul_tweak(&secp, &secret_key_summation_scalar)
-                                    .expect("secret scalars multiply");
-                                Some(ecdh_shared_secret)
-                            }
-                            _ => None,
+                    .map(|((_, keys), amount)| {
+                        let b_scan = BScan::from_slice(&keys[0..33]).expect("b_scan key fits");
+                        let b_m = Bm::from_slice(&keys[33..66]).expect("b_m key fits");
+                        (b_scan, b_m, amount)
+                    })
+                    .fold(
+                        HashMap::<BScan, Vec<(Bm, Amount)>>::new(),
+                        |mut grouping, (b_scan, b_m, amount)| {
+                            grouping
+                                .entry(b_scan)
+                                .or_insert(vec![(b_m, amount)])
+                                .push((b_m, amount));
+                            grouping
                         },
                     );
+
+                // .map(|(b_scan, (b_m, amount))| {
+                //     match (maybe_input_hash, maybe_secret_key_summation) {
+                //         (Some(input_hash), Some(secret_key_summation)) => {
+                //             //  input_hash·a·Bscan
+                //             let input_hash_scalar =
+                //                 Scalar::from_be_bytes(input_hash.to_byte_array())
+                //                     .expect("input_hash converts to scalar");
+                //             let secret_key_summation_scalar =
+                //                 Scalar::from_be_bytes(secret_key_summation.secret_bytes())
+                //                     .expect("secret keys convert to scalar");
+                //             let input_hash_bscan = b_scan
+                //                 .mul_tweak(&secp, &input_hash_scalar)
+                //                 .expect("scalars multiply");
+                //             let ecdh_shared_secret = input_hash_bscan
+                //                 .mul_tweak(&secp, &secret_key_summation_scalar)
+                //                 .expect("secret scalars multiply");
+                //             Some(ecdh_shared_secret)
+                //         }
+                //         _ => None,
+                //     }
+                // });
             })
             .for_each(drop);
 
