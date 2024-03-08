@@ -4,6 +4,12 @@ version = 3
 
 [[package]]
 name = "bech32"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d86b93f97252c47b41663388e6d155714a9d0c398b99f1005cbc5f978b29f445"
+
+[[package]]
+name = "bech32"
 version = "0.10.0-beta"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "98f7eed2b2781a6f0b5c903471d48e15f56fb4e1165df8a9a2337fd1a59d45ea"
@@ -14,7 +20,7 @@ version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd00f3c09b5f21fb357abe32d29946eb8bb7a0862bae62c0b5e4a692acbbe73c"
 dependencies = [
- "bech32",
+ "bech32 0.10.0-beta",
  "bitcoin-internals",
  "bitcoin_hashes",
  "hex-conservative",
@@ -218,6 +224,7 @@ dependencies = [
 name = "silent_payment_indexer"
 version = "0.1.0"
 dependencies = [
+ "bech32 0.9.1",
  "bitcoin",
  "bitcoin_hashes",
  "db-key",

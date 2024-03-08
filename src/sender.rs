@@ -1,10 +1,9 @@
-use bitcoin::secp256k1::PublicKey;
-
 use crate::{
     pubkey_extraction::{get_input_for_ssd, InputForSSDPubKey},
     tagged_hashes::{InputsHash, SmallestOutpoint},
     InputData, PublicKeySummation,
 };
+use bitcoin::secp256k1::PublicKey;
 
 type BScan = PublicKey;
 type Bm = PublicKey;
@@ -26,22 +25,21 @@ pub fn generate_input_hash(outpoint: SmallestOutpoint, input_summation: PublicKe
 
 #[cfg(test)]
 mod tests {
-    use bitcoin::{
-        bech32::{self, Bech32},
-        key::{Parity, Secp256k1},
-        secp256k1::{PublicKey, Scalar, SecretKey},
-        Amount, OutPoint, Script, ScriptBuf, XOnlyPublicKey,
-    };
-    use bitcoin_hashes::Hash;
-
     use super::*;
     use crate::{
         tagged_hashes::SharedSecretHash,
         test_data::{BIP352TestVectors, BIP352Vin, Recipient},
     };
-
+    use bech32::FromBase32;
+    use bitcoin::{
+        key::{Parity, Secp256k1},
+        secp256k1::{PublicKey, Scalar, SecretKey},
+        Amount, OutPoint, Script, ScriptBuf, XOnlyPublicKey,
+    };
+    use bitcoin_hashes::Hash;
+    use hex_conservative::DisplayHex;
     use std::{
-        collections::{BTreeMap, BTreeSet, HashMap},
+        collections::{BTreeSet, HashMap},
         fs::File,
         io::Read,
     };
@@ -61,7 +59,7 @@ mod tests {
     fn a_test() {
         let secp = Secp256k1::new();
         let test_vectors = get_bip352_test_vectors();
-        let sending = test_vectors
+        test_vectors
             .test_vectors
             .iter()
             .flat_map(|test| test.sending.iter())
@@ -77,7 +75,12 @@ mod tests {
                             script_sig: vin.script_sig.as_deref(),
                             txinwitness: vin.txinwitness.as_ref(),
                         };
-                        get_input_for_ssd(&input_data).map(|input_for_ssd| (vin, input_for_ssd))
+                        get_input_for_ssd(&input_data).map(|input_for_ssd| {
+                            if let Some(pubkey) = input_for_ssd.pubkey() {
+                                assert_eq!(vin.private_key.public_key(&secp), *pubkey);
+                            }
+                            (vin, input_for_ssd)
+                        })
                     })
                     .filter(|(_vin, input_for_ssd)| {
                         !matches!(input_for_ssd, InputForSSDPubKey::P2TRWithH)
@@ -143,21 +146,27 @@ mod tests {
                     }
                     _ => None,
                 };
+
                 let outputs = test_vectors
                     .test_vectors
                     .iter()
-                    .flat_map(|test| test.sending.iter())
+                    .flat_map(|test| {
+                        println!("comment: {}", test.comment);
+                        test.sending.iter()
+                    })
                     .flat_map(|sending| sending.given.recipients.iter())
                     .map(|recipient| {
-                        (
-                            bech32::decode(&recipient.recipient.0).expect("recipient"),
-                            Amount::from_btc(recipient.recipient.1 as f64) // TODO reconcile f64 vs f32
-                                .expect("test amount parses fine"),
-                        )
+                        // bech32 decoding in version 10 & 11 works differntly.
+                        let (hrp, data, _var) =
+                            bech32::decode(&recipient.recipient.0).expect("recipient");
+                        let data = Vec::<u8>::from_base32(&data[1..]).unwrap();
+
+                        ((hrp, data), recipient.recipient.1)
                     })
                     .map(|((_, keys), amount)| {
                         let b_scan = BScan::from_slice(&keys[0..33]).expect("b_scan key fits");
                         let b_m = Bm::from_slice(&keys[33..66]).expect("b_m key fits");
+                        let amount = Amount::from_btc(amount).expect("amount parses");
                         (b_scan, b_m, amount)
                     })
                     .fold(
@@ -179,6 +188,7 @@ mod tests {
                         (b_scan, b_m_and_amounts_sorted)
                     })
                     .flat_map(|(b_scan, b_m_and_amounts)| {
+                        println!("bscan: {}", b_scan);
                         match (maybe_input_hash, maybe_secret_key_summation) {
                             (Some(input_hash), Some(secret_key_summation)) => {
                                 //  input_hash·a·Bscan
@@ -200,25 +210,50 @@ mod tests {
                         }
                     })
                     .fold(
-                        Vec::<(PublicKey, Amount)>::new(),
+                        Vec::<(XOnlyPublicKey, Amount)>::new(),
                         |mut pubkey_with_amount, (ecdh_shared_secret, b_m_and_amounts)| {
-                            b_m_and_amounts.iter().map(|(b_m, amount)| {
-                                let mut k = 0;
-                                let t_k = SharedSecretHash::new(&ecdh_shared_secret, k);
-                                let t_k = Scalar::from_be_bytes(t_k.to_byte_array())
-                                    .expect("hashes convert to scalars");
-                                let p_km = b_m
-                                    .add_exp_tweak(&secp, &t_k)
-                                    .expect("public keys get tweaked cleanly");
-                                k += 1;
-                                pubkey_with_amount.push((p_km, *amount));
-                            });
+                            b_m_and_amounts
+                                .iter()
+                                .map(|(b_m, amount)| {
+                                    let mut k = 0;
+                                    let t_k = SharedSecretHash::new(&ecdh_shared_secret, k);
+                                    let t_k = Scalar::from_be_bytes(t_k.to_byte_array())
+                                        .expect("hashes convert to scalars");
+                                    let p_km = b_m
+                                        .add_exp_tweak(&secp, &t_k)
+                                        .expect("public keys get tweaked cleanly");
+                                    k += 1;
+                                    let xonly_p_km = p_km.x_only_public_key();
+                                    assert_eq!(xonly_p_km.1, Parity::Even);
+                                    pubkey_with_amount.push((xonly_p_km.0, *amount));
+                                })
+                                .for_each(drop);
                             pubkey_with_amount
                         },
                     );
+
+                test_vectors
+                    .test_vectors
+                    .iter()
+                    //                    .filter(|test| test.comment != "No valid inputs, sender generates no outputs")
+                    .flat_map(|test| {
+                        println!("comment: {}", test.comment);
+                        test.sending.iter()
+                    })
+                    .flat_map(|sending| sending.expected.outputs.iter())
+                    .map(|expected_outputs| {
+                        (
+                            expected_outputs.outputs.0,
+                            Amount::from_btc(expected_outputs.outputs.1).unwrap(),
+                        )
+                    })
+                    .zip(outputs.iter())
+                    .map(|(x, y)| {
+                        assert_eq!(&x, y);
+                        assert!(false)
+                    })
+                    .for_each(drop);
             })
             .for_each(drop);
-
-        assert!(false)
     }
 }

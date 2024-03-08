@@ -1,4 +1,4 @@
-use bitcoin::{secp256k1::SecretKey, ScriptBuf, Txid, Witness};
+use bitcoin::{secp256k1::SecretKey, Amount, ScriptBuf, Txid, Witness, XOnlyPublicKey};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -40,7 +40,7 @@ pub struct BIP352Vin {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(transparent)]
 pub struct Recipient {
-    pub recipient: (SPAddress, f32),
+    pub recipient: (SPAddress, f64),
 }
 type SPAddress = String;
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -48,7 +48,7 @@ type SPAddress = String;
 pub struct Outputs {
     pub outputs: Output,
 }
-type Output = (Txid, f32);
+type Output = (XOnlyPublicKey, f64);
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BIP352Prevout {
     #[serde(alias = "scriptPubKey")]
@@ -129,5 +129,26 @@ mod empty_scriptsig_is_none {
                 Ok(Some(w))
             }
         }
+    }
+}
+
+mod amount_parser {
+    use bitcoin::Amount;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S>(value: Amount, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_f64(value.to_float_in(bitcoin::Denomination::Bitcoin))
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Amount, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // This can be made generic: https://github.com/serde-rs/serde/issues/1425#issuecomment-462282398
+        let btc = f64::deserialize(deserializer)?;
+        Ok(Amount::from_btc(btc).expect("bitcoin amount parses"))
     }
 }
