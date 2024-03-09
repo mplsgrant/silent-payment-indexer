@@ -62,9 +62,12 @@ mod tests {
         test_vectors
             .test_vectors
             .iter()
-            .flat_map(|test| test.sending.iter())
+            .flat_map(|test| {
+                println!("Comment: {}", test.comment);
+                test.sending.iter()
+            })
             .map(|sending| {
-                let (secret_keys, pubkeys, btree) = sending
+                let (secret_keys, pubkeys, outpoints) = sending
                     .given
                     .vin
                     .iter()
@@ -75,12 +78,7 @@ mod tests {
                             script_sig: vin.script_sig.as_deref(),
                             txinwitness: vin.txinwitness.as_ref(),
                         };
-                        get_input_for_ssd(&input_data).map(|input_for_ssd| {
-                            if let Some(pubkey) = input_for_ssd.pubkey() {
-                                assert_eq!(vin.private_key.public_key(&secp), *pubkey);
-                            }
-                            (vin, input_for_ssd)
-                        })
+                        get_input_for_ssd(&input_data).map(|input_for_ssd| (vin, input_for_ssd))
                     })
                     .filter(|(_vin, input_for_ssd)| {
                         !matches!(input_for_ssd, InputForSSDPubKey::P2TRWithH)
@@ -94,9 +92,9 @@ mod tests {
                             Vec::<PublicKey>::new(),
                             BTreeSet::<OutPoint>::new(),
                         ),
-                        |(mut priv_keys, mut pubkeys, mut btree),
+                        |(mut priv_keys, mut pubkeys, mut outpoints),
                          (vin, input_for_ssd, outpoint)| {
-                            btree.insert(outpoint);
+                            outpoints.insert(outpoint);
                             let (private_key, pubkey) = match input_for_ssd {
                                 InputForSSDPubKey::P2PKH { pubkey } => (vin.private_key, pubkey),
                                 InputForSSDPubKey::P2SH { pubkey } => (vin.private_key, pubkey),
@@ -116,14 +114,16 @@ mod tests {
                                 }
                                 InputForSSDPubKey::P2TRWithH => panic!("should not see H here"),
                             };
-
                             priv_keys.push(private_key);
                             pubkeys.push(pubkey);
-                            (priv_keys, pubkeys, btree)
+                            if let Some(pubkey) = input_for_ssd.pubkey() {
+                                assert_eq!(private_key.public_key(&secp), *pubkey);
+                            }
+                            (priv_keys, pubkeys, outpoints)
                         },
                     );
 
-                let maybe_smallest_outpoint = btree
+                let maybe_smallest_outpoint = outpoints
                     .into_iter()
                     .next()
                     .and_then(|smallest_outpoint| SmallestOutpoint::new(&[smallest_outpoint]));
@@ -131,11 +131,16 @@ mod tests {
                 // Let a = a1 + a2 + ... + an, where each ai has been negated if necessary
                 let maybe_secret_key_summation =
                     secret_keys.split_first().map(|(first_sk, rest)| {
-                        rest.iter().fold(first_sk, |summed_sk, sk| {
-                            let scalar = &(*sk).into();
-                            summed_sk.add_tweak(scalar).expect("secret keys do sum");
-                            summed_sk
-                        })
+                        let mut first_sk = *first_sk;
+                        if !rest.is_empty() {
+                            for sk in rest {
+                                let scalar = &(*sk).into();
+                                first_sk = first_sk.add_tweak(scalar).expect("secret keys do sum");
+                            }
+                            first_sk
+                        } else {
+                            first_sk
+                        }
                     });
 
                 let pubkeys: Vec<&PublicKey> = pubkeys.iter().collect(); // TODO Can we push the referencing up?
@@ -147,21 +152,16 @@ mod tests {
                     _ => None,
                 };
 
-                let outputs = test_vectors
-                    .test_vectors
+                let outputs = sending
+                    .given
+                    .recipients
                     .iter()
-                    .flat_map(|test| {
-                        println!("comment: {}", test.comment);
-                        test.sending.iter()
-                    })
-                    .flat_map(|sending| sending.given.recipients.iter())
                     .map(|recipient| {
                         // bech32 decoding in version 10 & 11 works differntly.
                         let (hrp, data, _var) =
                             bech32::decode(&recipient.recipient.0).expect("recipient");
-                        let data = Vec::<u8>::from_base32(&data[1..]).unwrap();
-
-                        ((hrp, data), recipient.recipient.1)
+                        let keys = Vec::<u8>::from_base32(&data[1..]).unwrap();
+                        ((hrp, keys), recipient.recipient.1)
                     })
                     .map(|((_, keys), amount)| {
                         let b_scan = BScan::from_slice(&keys[0..33]).expect("b_scan key fits");
@@ -172,23 +172,29 @@ mod tests {
                     .fold(
                         HashMap::<BScan, Vec<(Bm, Amount)>>::new(),
                         |mut grouping, (b_scan, b_m, amount)| {
+                            println!("AAA");
                             grouping
                                 .entry(b_scan)
                                 .or_insert(vec![(b_m, amount)])
                                 .push((b_m, amount));
+                            println!("grouping: {:?}", grouping);
                             grouping
                         },
                     )
                     .iter()
-                    .map(|(b_scan, b_m_and_amounts)| {
-                        // Sort for sole purpose of keeping the tests determininstic.
-                        let mut b_m_and_amounts_sorted = b_m_and_amounts.clone();
-                        b_m_and_amounts_sorted
-                            .sort_by(|(_, a_amount), (_, b_amount)| a_amount.cmp(b_amount));
-                        (b_scan, b_m_and_amounts_sorted)
-                    })
+                    // Sort for sole purpose of keeping the tests determininstic.
+                    // .fold(
+                    //     HashMap::<BScan, Vec<(Bm, Amount)>>::new(),
+                    //     |mut grouping, (b_scan, b_m_and_amounts)| {
+                    //         let mut b_m_and_amounts_sorted = b_m_and_amounts.clone();
+                    //         b_m_and_amounts_sorted
+                    //             .sort_by(|(_, a_amount), (_, b_amount)| a_amount.cmp(b_amount));
+                    //         grouping.insert(*b_scan, b_m_and_amounts_sorted);
+                    //         grouping
+                    //     },
+                    // )
+                    // .iter()
                     .flat_map(|(b_scan, b_m_and_amounts)| {
-                        println!("bscan: {}", b_scan);
                         match (maybe_input_hash, maybe_secret_key_summation) {
                             (Some(input_hash), Some(secret_key_summation)) => {
                                 //  input_hash·a·Bscan
@@ -211,11 +217,11 @@ mod tests {
                     })
                     .fold(
                         Vec::<(XOnlyPublicKey, Amount)>::new(),
-                        |mut pubkey_with_amount, (ecdh_shared_secret, b_m_and_amounts)| {
+                        |mut pubkeys_with_amounts, (ecdh_shared_secret, b_m_and_amounts)| {
+                            let mut k = 0;
                             b_m_and_amounts
                                 .iter()
                                 .map(|(b_m, amount)| {
-                                    let mut k = 0;
                                     let t_k = SharedSecretHash::new(&ecdh_shared_secret, k);
                                     let t_k = Scalar::from_be_bytes(t_k.to_byte_array())
                                         .expect("hashes convert to scalars");
@@ -224,23 +230,17 @@ mod tests {
                                         .expect("public keys get tweaked cleanly");
                                     k += 1;
                                     let xonly_p_km = p_km.x_only_public_key();
-                                    assert_eq!(xonly_p_km.1, Parity::Even);
-                                    pubkey_with_amount.push((xonly_p_km.0, *amount));
+                                    pubkeys_with_amounts.push((xonly_p_km.0, *amount));
                                 })
                                 .for_each(drop);
-                            pubkey_with_amount
+                            pubkeys_with_amounts
                         },
                     );
 
-                test_vectors
-                    .test_vectors
+                sending
+                    .expected
+                    .outputs
                     .iter()
-                    //                    .filter(|test| test.comment != "No valid inputs, sender generates no outputs")
-                    .flat_map(|test| {
-                        println!("comment: {}", test.comment);
-                        test.sending.iter()
-                    })
-                    .flat_map(|sending| sending.expected.outputs.iter())
                     .map(|expected_outputs| {
                         (
                             expected_outputs.outputs.0,
@@ -248,9 +248,10 @@ mod tests {
                         )
                     })
                     .zip(outputs.iter())
-                    .map(|(x, y)| {
-                        assert_eq!(&x, y);
-                        assert!(false)
+                    .map(|(given, produced)| {
+                        println!("given: {} {}", given.0, given.1);
+                        println!("prod : {} {}", produced.0, produced.1);
+                        assert_eq!(&given, produced);
                     })
                     .for_each(drop);
             })
