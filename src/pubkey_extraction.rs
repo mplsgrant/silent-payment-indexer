@@ -32,6 +32,9 @@ impl InputForSSDPubKey {
             InputForSSDPubKey::P2TRWithH => None,
         }
     }
+    // Test if we should negate the private key
+    // Perform `combine_keys`
+    //
 }
 
 /// Get Inputs For Shared Secret Derivation (SSD)

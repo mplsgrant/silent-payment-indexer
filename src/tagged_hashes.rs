@@ -21,6 +21,7 @@ use bitcoin_hashes::{sha256t_hash_newtype, Hash, HashEngine};
 use crate::PublicKeySummation;
 
 /// Need to use the smallest outpoint when tagging input values
+#[derive(Debug)]
 pub struct SmallestOutpoint {
     inner: OutPoint,
 }

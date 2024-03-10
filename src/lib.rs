@@ -28,6 +28,7 @@ static NUMS: [u8; 32] = [
 ];
 static NUMS_PUBKEY: Lazy<XOnlyPublicKey> = Lazy::new(|| XOnlyPublicKey::from_slice(&NUMS).unwrap());
 
+#[derive(Clone)]
 pub struct PublicKeySummation {
     inner: PublicKey,
 }

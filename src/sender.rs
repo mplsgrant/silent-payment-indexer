@@ -60,11 +60,6 @@ mod tests {
         let secp = Secp256k1::new();
         let test_vectors = get_bip352_test_vectors();
 
-        for test_case in test_vectors.test_vectors.iter() {
-            println!("Comment: {}", test_case.comment);
-            for sending in test_case.sending.iter() {}
-        }
-
         test_vectors
             .test_vectors
             .iter()
@@ -87,6 +82,9 @@ mod tests {
                         get_input_for_ssd(&input_data).map(|input_for_ssd| (vin, input_for_ssd))
                     })
                     .filter(|(_vin, input_for_ssd)| {
+                        if matches!(input_for_ssd, InputForSSDPubKey::P2TRWithH) {
+                            println!("NUMS_VIN: {}", _vin.prevout.script_pubkey.hex);
+                        }
                         !matches!(input_for_ssd, InputForSSDPubKey::P2TRWithH)
                     })
                     .map(|(vin, input_for_ssd)| {
@@ -150,14 +148,23 @@ mod tests {
                     });
 
                 let pubkeys: Vec<&PublicKey> = pubkeys.iter().collect(); // TODO Can we push the referencing up?
+                pubkeys.iter().for_each(|x| println!("PUBKEY: {}", x));
                 let maybe_pubkey_summation = PublicKeySummation::new(pubkeys.as_slice());
+                println!(
+                    "PUBKEY_AFTER: {}",
+                    maybe_pubkey_summation.clone().unwrap().clone().public_key()
+                );
+
                 let maybe_input_hash = match (maybe_smallest_outpoint, maybe_pubkey_summation) {
                     (Some(smallest_outpoint), Some(pubkey_summation)) => {
+                        println!("A_sum: {}", pubkey_summation.inner);
+                        println!("OUTPOINT: {:?}", smallest_outpoint);
                         Some(InputsHash::new(smallest_outpoint, &pubkey_summation))
                     }
                     _ => None,
                 };
 
+                println!("INPUT_HASH: {}", maybe_input_hash.unwrap());
                 let outputs = sending_example
                     .given
                     .recipients
