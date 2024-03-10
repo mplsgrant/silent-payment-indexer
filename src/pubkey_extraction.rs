@@ -9,8 +9,6 @@ use bitcoin::{
     Script,
 };
 
-use crate::NUMS;
-
 /// Inputs For Shared Secret Derivation (SSD) Type provides the input type for the `PublicKey`.
 /// This allows us to perform actions such as negating private keys later on based on whether the
 /// public key has a taproot type
@@ -32,9 +30,6 @@ impl InputForSSDPubKey {
             InputForSSDPubKey::P2TRWithH => None,
         }
     }
-    // Test if we should negate the private key
-    // Perform `combine_keys`
-    //
 }
 
 /// Get Inputs For Shared Secret Derivation (SSD)
@@ -80,7 +75,7 @@ fn get_pubkey_from_p2pkh(vin: &InputData) -> Option<PublicKey> {
     };
     // skip the first 3 op_codes and grab the 20 byte hash from the scriptPubKey
     let script_pubkey_hash = &vin.prevout.as_bytes()[3..23];
-    let maybe_pubkey = &script_sig.as_bytes()[script_sig.len() - 33..];
+    let maybe_pubkey = &script_sig.as_bytes()[script_sig.len() - PUBLIC_KEY_SIZE..];
     let maybe_pubkey_hash = hash160::Hash::hash(maybe_pubkey);
     if &maybe_pubkey_hash[..] == script_pubkey_hash {
         Some(PublicKey::from_slice(maybe_pubkey).expect("maybe_pubkey IS a pubkey"))
@@ -95,6 +90,7 @@ fn get_pubkey_from_p2pkh(vin: &InputData) -> Option<PublicKey> {
                 })
             })
             .flatten()
+            .filter(|maybe_pubkey| maybe_pubkey.len() == PUBLIC_KEY_SIZE)
             .find_map(|maybe_pubkey| {
                 let maybe_pubkey_hash = hash160::Hash::hash(maybe_pubkey);
                 if &maybe_pubkey_hash[..] == script_pubkey_hash {
@@ -379,6 +375,22 @@ mod tests {
     }
 
     #[test]
+    fn test_nums_point() {
+        let witness = deserialize::<Witness>(&hex!("0440c459b671370d12cfb5acee76da7e3ba7cc29b0b4653e3af8388591082660137d087fdc8e89a612cd5d15be0febe61fc7cdcf3161a26e599a4514aa5c3e86f47b22205a1e61f898173040e20616d43e9f496fba90338a39faa1ed98fcbaeee4dd9be5ac21c150929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac00150")).unwrap();
+        let prevout = ScriptBuf::from_hex(
+            "5120da6f0595ecb302bbe73e2f221f05ab10f336b06817d36fd28fc6691725ddaa85",
+        )
+        .unwrap();
+        let vin = InputData {
+            prevout: &prevout,
+            script_sig: None,
+            txinwitness: Some(&witness),
+        };
+        let xonly_scenario = get_pubkey_from_p2tr(&vin).unwrap();
+        assert_eq!(xonly_scenario, XOnlyScenario::XOnlyWithH);
+    }
+
+    #[test]
     fn the_pubkeys_from_privkey_match_the_pubkeys_from_the_get_input_for_sdd_function() {
         let secp = Secp256k1::new();
         let vectors = get_bip352_test_vectors();
@@ -425,9 +437,11 @@ mod tests {
                             InputForSSDPubKey::P2TRWithH => None,
                         };
                     } else {
+                        println!("{:?}", vector.comment.as_str());
                         assert!([
                             "P2PKH and P2WPKH Uncompressed Keys are skipped",
-                            "Skip invalid P2SH inputs"
+                            "Skip invalid P2SH inputs",
+                            "No valid inputs, sender generates no outputs"
                         ]
                         .contains(&vector.comment.as_str()));
                     }

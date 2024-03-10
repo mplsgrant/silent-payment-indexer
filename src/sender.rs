@@ -8,28 +8,10 @@ use bitcoin::secp256k1::PublicKey;
 type BScan = PublicKey;
 type Bm = PublicKey;
 
-/// Select UTXOs which the sender controls, at least one of which must be an Inputs For Shared Secret Derivation (IFSSD)
-///
-/// BDK UTXO includes: OutPoint (txid, vout) and TxOut (value, scriptPubKey) + (internal/external & is_spent)
-/// InputData inclues:
-pub fn select_utxos<'a>(
-    input_data: &'a [&'a InputData],
-) -> impl Iterator<Item = InputForSSDPubKey> + 'a {
-    // TODO return Item = &'a PublicKey
-    input_data.iter().flat_map(|data| get_input_for_ssd(data))
-}
-
-pub fn generate_input_hash(outpoint: SmallestOutpoint, input_summation: PublicKeySummation) {
-    let input_hash = InputsHash::new(outpoint, &input_summation);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        tagged_hashes::SharedSecretHash,
-        test_data::{BIP352TestVectors, BIP352Vin, Recipient},
-    };
+    use crate::{tagged_hashes::SharedSecretHash, test_data::BIP352TestVectors};
     use bech32::FromBase32;
     use bitcoin::{
         key::{Parity, Secp256k1},
@@ -37,7 +19,7 @@ mod tests {
         Amount, OutPoint, Script, ScriptBuf, XOnlyPublicKey,
     };
     use bitcoin_hashes::Hash;
-    use hex_conservative::DisplayHex;
+
     use std::{
         collections::{BTreeMap, BTreeSet, HashMap},
         fs::File,
@@ -81,12 +63,6 @@ mod tests {
                         };
                         get_input_for_ssd(&input_data).map(|input_for_ssd| (vin, input_for_ssd))
                     })
-                    .filter(|(_vin, input_for_ssd)| {
-                        if matches!(input_for_ssd, InputForSSDPubKey::P2TRWithH) {
-                            println!("NUMS_VIN: {}", _vin.prevout.script_pubkey.hex);
-                        }
-                        !matches!(input_for_ssd, InputForSSDPubKey::P2TRWithH)
-                    })
                     .map(|(vin, input_for_ssd)| {
                         (vin, input_for_ssd, OutPoint::new(vin.txid, vin.vout))
                     })
@@ -100,9 +76,15 @@ mod tests {
                          (vin, input_for_ssd, outpoint)| {
                             outpoints.insert(outpoint);
                             let (private_key, pubkey) = match input_for_ssd {
-                                InputForSSDPubKey::P2PKH { pubkey } => (vin.private_key, pubkey),
-                                InputForSSDPubKey::P2SH { pubkey } => (vin.private_key, pubkey),
-                                InputForSSDPubKey::P2WPKH { pubkey } => (vin.private_key, pubkey),
+                                InputForSSDPubKey::P2PKH { pubkey } => {
+                                    (Some(vin.private_key), Some(pubkey))
+                                }
+                                InputForSSDPubKey::P2SH { pubkey } => {
+                                    (Some(vin.private_key), Some(pubkey))
+                                }
+                                InputForSSDPubKey::P2WPKH { pubkey } => {
+                                    (Some(vin.private_key), Some(pubkey))
+                                }
                                 InputForSSDPubKey::P2TR { pubkey } => {
                                     let pubkey_from_secret_key =
                                         PublicKey::from_secret_key(&secp, &vin.private_key);
@@ -114,14 +96,20 @@ mod tests {
                                         } else {
                                             vin.private_key
                                         };
-                                    (secret_key_even_y, pubkey)
+                                    (Some(secret_key_even_y), Some(pubkey))
                                 }
-                                InputForSSDPubKey::P2TRWithH => panic!("should not see H here"),
+                                InputForSSDPubKey::P2TRWithH => (None, None),
                             };
-                            priv_keys.push(private_key);
-                            pubkeys.push(pubkey);
+                            if let Some(private_key) = private_key {
+                                priv_keys.push(private_key);
+                            }
+                            if let Some(pubkey) = pubkey {
+                                pubkeys.push(pubkey);
+                            }
                             if let Some(pubkey) = input_for_ssd.pubkey() {
-                                assert_eq!(private_key.public_key(&secp), *pubkey);
+                                if let Some(private_key) = private_key {
+                                    assert_eq!(private_key.public_key(&secp), *pubkey);
+                                }
                             }
                             (priv_keys, pubkeys, outpoints)
                         },
@@ -148,29 +136,20 @@ mod tests {
                     });
 
                 let pubkeys: Vec<&PublicKey> = pubkeys.iter().collect(); // TODO Can we push the referencing up?
-                pubkeys.iter().for_each(|x| println!("PUBKEY: {}", x));
                 let maybe_pubkey_summation = PublicKeySummation::new(pubkeys.as_slice());
-                println!(
-                    "PUBKEY_AFTER: {}",
-                    maybe_pubkey_summation.clone().unwrap().clone().public_key()
-                );
 
                 let maybe_input_hash = match (maybe_smallest_outpoint, maybe_pubkey_summation) {
                     (Some(smallest_outpoint), Some(pubkey_summation)) => {
-                        println!("A_sum: {}", pubkey_summation.inner);
-                        println!("OUTPOINT: {:?}", smallest_outpoint);
                         Some(InputsHash::new(smallest_outpoint, &pubkey_summation))
                     }
                     _ => None,
                 };
 
-                println!("INPUT_HASH: {}", maybe_input_hash.unwrap());
                 let outputs = sending_example
                     .given
                     .recipients
                     .iter()
                     .map(|recipient| {
-                        println!("recipient: {}", recipient.recipient.0);
                         // bech32 decoding in versions 10 & 11 work differntly.
                         let (hrp, data, _var) =
                             bech32::decode(&recipient.recipient.0).expect("recipient");
@@ -184,7 +163,7 @@ mod tests {
                         (b_scan, b_m, amount)
                     })
                     .fold(
-                        BTreeMap::<BScan, Vec<(Bm, Amount)>>::new(),
+                        HashMap::<BScan, Vec<(Bm, Amount)>>::new(),
                         |mut grouping, (b_scan, b_m, amount)| {
                             if let Some(pubkeys_amounts) = grouping.get_mut(&b_scan) {
                                 pubkeys_amounts.push((b_m, amount));
@@ -194,18 +173,6 @@ mod tests {
                             grouping
                         },
                     )
-                    // .iter()
-                    // // Sort for sole purpose of keeping the tests determininstic.
-                    // .fold(
-                    //     BTreeMap::<BScan, Vec<(Bm, Amount)>>::new(),
-                    //     |mut grouping, (b_scan, b_m_and_amounts)| {
-                    //         let mut b_m_and_amounts_sorted = b_m_and_amounts.clone();
-                    //         b_m_and_amounts_sorted
-                    //             .sort_by(|(_, a_amount), (_, b_amount)| a_amount.cmp(b_amount));
-                    //         grouping.insert(*b_scan, b_m_and_amounts_sorted);
-                    //         grouping
-                    //     },
-                    // )
                     .iter()
                     .flat_map(|(b_scan, b_m_and_amounts)| {
                         match (maybe_input_hash, maybe_secret_key_summation) {
@@ -249,14 +216,6 @@ mod tests {
                             pubkeys_with_amounts
                         },
                     );
-
-                println!(
-                    "outputs: {:?}",
-                    outputs
-                        .iter()
-                        .map(|x| (x.0.to_string(), x.1))
-                        .collect::<Vec<(String, Amount)>>()
-                );
 
                 // sort outputs to match the order of the test results
                 let mut outputs = outputs;
