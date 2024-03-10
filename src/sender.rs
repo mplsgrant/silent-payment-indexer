@@ -157,7 +157,7 @@ mod tests {
                     .recipients
                     .iter()
                     .map(|recipient| {
-                        // bech32 decoding in version 10 & 11 works differntly.
+                        // bech32 decoding in versions 10 & 11 work differntly.
                         let (hrp, data, _var) =
                             bech32::decode(&recipient.recipient.0).expect("recipient");
                         let keys = Vec::<u8>::from_base32(&data[1..]).unwrap();
@@ -167,16 +167,18 @@ mod tests {
                         let b_scan = BScan::from_slice(&keys[0..33]).expect("b_scan key fits");
                         let b_m = Bm::from_slice(&keys[33..66]).expect("b_m key fits");
                         let amount = Amount::from_btc(amount).expect("amount parses");
+                        println!("b_scan: {}, bm: {} amount: {}", b_scan, b_m, amount);
                         (b_scan, b_m, amount)
                     })
                     .fold(
                         HashMap::<BScan, Vec<(Bm, Amount)>>::new(),
                         |mut grouping, (b_scan, b_m, amount)| {
                             println!("AAA");
-                            grouping
-                                .entry(b_scan)
-                                .or_insert(vec![(b_m, amount)])
-                                .push((b_m, amount));
+                            if let Some(pubkeys_amounts) = grouping.get_mut(&b_scan) {
+                                pubkeys_amounts.push((b_m, amount));
+                            } else {
+                                grouping.insert(b_scan, vec![(b_m, amount)]);
+                            }
                             println!("grouping: {:?}", grouping);
                             grouping
                         },
@@ -195,6 +197,7 @@ mod tests {
                     // )
                     // .iter()
                     .flat_map(|(b_scan, b_m_and_amounts)| {
+                        println!("bscan: {:?}; {:?}", b_scan, b_m_and_amounts);
                         match (maybe_input_hash, maybe_secret_key_summation) {
                             (Some(input_hash), Some(secret_key_summation)) => {
                                 //  input_hash·a·Bscan
