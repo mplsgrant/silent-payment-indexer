@@ -16,7 +16,7 @@ mod tests {
     use bitcoin::{
         key::{Parity, Secp256k1},
         secp256k1::{PublicKey, Scalar, SecretKey},
-        Amount, OutPoint, Script, ScriptBuf, XOnlyPublicKey,
+        Amount, OutPoint, ScriptBuf, XOnlyPublicKey,
     };
     use bitcoin_hashes::Hash;
 
