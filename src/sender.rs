@@ -41,6 +41,7 @@ mod tests {
     fn a_test() {
         let secp = Secp256k1::new();
         let test_vectors = get_bip352_test_vectors();
+        let mut test_count = 25;
 
         test_vectors
             .test_vectors
@@ -239,7 +240,10 @@ mod tests {
                         assert_eq!(&given, produced);
                     })
                     .for_each(drop);
+                println!("test_count: {test_count}");
+                test_count -= 1;
             })
             .for_each(drop);
+        assert_eq!(test_count, 0);
     }
 }
