@@ -21,7 +21,7 @@ mod tests {
     use bitcoin_hashes::Hash;
 
     use std::{
-        collections::{BTreeMap, BTreeSet, HashMap},
+        collections::{BTreeSet, HashMap},
         fs::File,
         io::Read,
     };
