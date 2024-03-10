@@ -39,7 +39,7 @@ mod tests {
     use bitcoin_hashes::Hash;
     use hex_conservative::DisplayHex;
     use std::{
-        collections::{BTreeSet, HashMap},
+        collections::{BTreeMap, BTreeSet, HashMap},
         fs::File,
         io::Read,
     };
@@ -59,6 +59,12 @@ mod tests {
     fn a_test() {
         let secp = Secp256k1::new();
         let test_vectors = get_bip352_test_vectors();
+
+        for test_case in test_vectors.test_vectors.iter() {
+            println!("Comment: {}", test_case.comment);
+            for sending in test_case.sending.iter() {}
+        }
+
         test_vectors
             .test_vectors
             .iter()
@@ -66,8 +72,8 @@ mod tests {
                 println!("Comment: {}", test.comment);
                 test.sending.iter()
             })
-            .map(|sending| {
-                let (secret_keys, pubkeys, outpoints) = sending
+            .map(|sending_example| {
+                let (secret_keys, pubkeys, outpoints) = sending_example
                     .given
                     .vin
                     .iter()
@@ -152,11 +158,12 @@ mod tests {
                     _ => None,
                 };
 
-                let outputs = sending
+                let outputs = sending_example
                     .given
                     .recipients
                     .iter()
                     .map(|recipient| {
+                        println!("recipient: {}", recipient.recipient.0);
                         // bech32 decoding in versions 10 & 11 work differntly.
                         let (hrp, data, _var) =
                             bech32::decode(&recipient.recipient.0).expect("recipient");
@@ -167,26 +174,23 @@ mod tests {
                         let b_scan = BScan::from_slice(&keys[0..33]).expect("b_scan key fits");
                         let b_m = Bm::from_slice(&keys[33..66]).expect("b_m key fits");
                         let amount = Amount::from_btc(amount).expect("amount parses");
-                        println!("b_scan: {}, bm: {} amount: {}", b_scan, b_m, amount);
                         (b_scan, b_m, amount)
                     })
                     .fold(
-                        HashMap::<BScan, Vec<(Bm, Amount)>>::new(),
+                        BTreeMap::<BScan, Vec<(Bm, Amount)>>::new(),
                         |mut grouping, (b_scan, b_m, amount)| {
-                            println!("AAA");
                             if let Some(pubkeys_amounts) = grouping.get_mut(&b_scan) {
                                 pubkeys_amounts.push((b_m, amount));
                             } else {
                                 grouping.insert(b_scan, vec![(b_m, amount)]);
                             }
-                            println!("grouping: {:?}", grouping);
                             grouping
                         },
                     )
-                    .iter()
-                    // Sort for sole purpose of keeping the tests determininstic.
+                    // .iter()
+                    // // Sort for sole purpose of keeping the tests determininstic.
                     // .fold(
-                    //     HashMap::<BScan, Vec<(Bm, Amount)>>::new(),
+                    //     BTreeMap::<BScan, Vec<(Bm, Amount)>>::new(),
                     //     |mut grouping, (b_scan, b_m_and_amounts)| {
                     //         let mut b_m_and_amounts_sorted = b_m_and_amounts.clone();
                     //         b_m_and_amounts_sorted
@@ -195,9 +199,8 @@ mod tests {
                     //         grouping
                     //     },
                     // )
-                    // .iter()
+                    .iter()
                     .flat_map(|(b_scan, b_m_and_amounts)| {
-                        println!("bscan: {:?}; {:?}", b_scan, b_m_and_amounts);
                         match (maybe_input_hash, maybe_secret_key_summation) {
                             (Some(input_hash), Some(secret_key_summation)) => {
                                 //  input_hash·a·Bscan
@@ -240,7 +243,20 @@ mod tests {
                         },
                     );
 
-                sending
+                println!(
+                    "outputs: {:?}",
+                    outputs
+                        .iter()
+                        .map(|x| (x.0.to_string(), x.1))
+                        .collect::<Vec<(String, Amount)>>()
+                );
+
+                // sort outputs to match the order of the test results
+                let mut outputs = outputs;
+                outputs
+                    .sort_by(|(_pubkey_a, amount_a), (_pubkey_b, amount_b)| amount_a.cmp(amount_b));
+
+                sending_example
                     .expected
                     .outputs
                     .iter()

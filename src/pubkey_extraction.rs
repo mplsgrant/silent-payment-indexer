@@ -156,7 +156,6 @@ fn get_pubkey_from_p2tr(vin: &InputData) -> Option<XOnlyScenario> {
         .map(|control_block| control_block.internal_key)
         .and_then(|internal_key| {
             if internal_key == *NUMS_PUBKEY {
-                println!("NUMS: HELLO NUMS!");
                 Some(XOnlyScenario::XOnlyWithH)
             } else if let Ok(xonly) = XOnlyPublicKey::from_slice(&vin.prevout.as_bytes()[2..]) {
                 Some(XOnlyScenario::XOnly(xonly))
