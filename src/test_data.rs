@@ -9,24 +9,22 @@ pub struct BIP352TestVectors {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BIP352Test {
     pub comment: String,
-    pub sending: Vec<BIP352SendingObject>,
+    pub sending: Vec<SendingObject>,
+    pub receiving: Vec<ReceivingObject>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ReceivingObject {
+    pub given: ReceivingGiven,
+    pub expected: ReceivingExpected,
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct BIP352SendingObject {
-    pub given: BIP352Given,
-    pub expected: BIP352Expected,
+pub struct ReceivingGiven {
+    pub vin: Vec<ReceivingVin>,
+    pub outputs: Vec<ReceivingOutputs>,
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct BIP352Given {
-    pub vin: Vec<BIP352Vin>,
-    pub recipients: Vec<Recipient>,
-}
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct BIP352Expected {
-    pub outputs: Vec<Outputs>,
-}
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct BIP352Vin {
+pub struct ReceivingVin {
     pub txid: Txid,
     pub vout: u32,
     #[serde(alias = "scriptSig")]
@@ -34,7 +32,49 @@ pub struct BIP352Vin {
     pub script_sig: Option<ScriptBuf>,
     #[serde(with = "empty_witness_is_none")]
     pub txinwitness: Option<Witness>,
-    pub prevout: BIP352Prevout,
+    pub prevout: Prevout,
+}
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(transparent)]
+pub struct ReceivingOutputs {
+    pub outputs: XOnlyPublicKey,
+}
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ReceivingExpected {
+    pub addresses: Vec<String>,
+    pub outputs: Vec<ReceivingExpectedOutputs>,
+}
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ReceivingExpectedOutputs {
+    pub pub_key: String,
+    pub priv_key_tweak: String,
+    pub signature: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SendingObject {
+    pub given: SendingGiven,
+    pub expected: SendingExpected,
+}
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SendingGiven {
+    pub vin: Vec<SendingVin>,
+    pub recipients: Vec<Recipient>,
+}
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SendingExpected {
+    pub outputs: Vec<SendingOutputs>,
+}
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SendingVin {
+    pub txid: Txid,
+    pub vout: u32,
+    #[serde(alias = "scriptSig")]
+    #[serde(with = "empty_scriptsig_is_none")]
+    pub script_sig: Option<ScriptBuf>,
+    #[serde(with = "empty_witness_is_none")]
+    pub txinwitness: Option<Witness>,
+    pub prevout: Prevout,
     pub private_key: SecretKey,
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -42,20 +82,22 @@ pub struct BIP352Vin {
 pub struct Recipient {
     pub recipient: (SPAddress, f64),
 }
+
 type SPAddress = String;
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(transparent)]
-pub struct Outputs {
+pub struct SendingOutputs {
     pub outputs: Output,
 }
 type Output = (XOnlyPublicKey, f64);
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct BIP352Prevout {
+pub struct Prevout {
     #[serde(alias = "scriptPubKey")]
-    pub script_pubkey: BIP352ScriptPubKey,
+    pub script_pubkey: ScriptPubKey,
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct BIP352ScriptPubKey {
+pub struct ScriptPubKey {
     pub hex: String,
 }
 
