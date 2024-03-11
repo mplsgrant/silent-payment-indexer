@@ -7,7 +7,7 @@ This indexer helps with Silent Payments by searching through the blockchain for 
 
 # WIP Items
 - [ ] Add all tagged hashes
-- [ ] Run all recommended tests against pubkey extraction
+- [x] Run all recommended tests against pubkey extraction
 - [x] Extract pubkeys from relevant txn type w/ basic testing
   - [x] p2pkh
   - [x] p2sh-p2wpkh
