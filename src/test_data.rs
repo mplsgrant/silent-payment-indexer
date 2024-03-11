@@ -56,8 +56,8 @@ pub struct ReceivingExpectedOutputs {
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct KeyMaterial {
-    pub spend_priv_key: String,
-    pub scan_priv_key: String,
+    pub spend_priv_key: SecretKey,
+    pub scan_priv_key: SecretKey,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
