@@ -23,7 +23,9 @@ pub struct ReceivingObject {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ReceivingGiven {
     pub vin: Vec<ReceivingVin>,
-    pub outputs: Vec<ReceivingOutputs>,
+    pub outputs: Vec<ReceivingOutput>,
+    pub key_material: KeyMaterial,
+    pub labels: Vec<u32>,
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ReceivingVin {
@@ -38,8 +40,8 @@ pub struct ReceivingVin {
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(transparent)]
-pub struct ReceivingOutputs {
-    pub outputs: XOnlyPublicKey,
+pub struct ReceivingOutput {
+    pub output: XOnlyPublicKey,
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ReceivingExpected {
@@ -51,6 +53,11 @@ pub struct ReceivingExpectedOutputs {
     pub pub_key: XOnlyPublicKey,
     pub priv_key_tweak: String,
     pub signature: Signature,
+}
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct KeyMaterial {
+    pub spend_priv_key: String,
+    pub scan_priv_key: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
