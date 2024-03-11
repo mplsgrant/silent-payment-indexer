@@ -1,4 +1,7 @@
-use bitcoin::{secp256k1::SecretKey, Amount, ScriptBuf, Txid, Witness, XOnlyPublicKey};
+use bitcoin::{
+    secp256k1::{schnorr::Signature, SecretKey},
+    Amount, ScriptBuf, Txid, Witness, XOnlyPublicKey,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -12,7 +15,6 @@ pub struct BIP352Test {
     pub sending: Vec<SendingObject>,
     pub receiving: Vec<ReceivingObject>,
 }
-
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ReceivingObject {
     pub given: ReceivingGiven,
@@ -46,9 +48,9 @@ pub struct ReceivingExpected {
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ReceivingExpectedOutputs {
-    pub pub_key: String,
+    pub pub_key: XOnlyPublicKey,
     pub priv_key_tweak: String,
-    pub signature: String,
+    pub signature: Signature,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -171,6 +173,29 @@ mod empty_scriptsig_is_none {
                 Ok(Some(w))
             }
         }
+    }
+}
+
+mod priv_key_tweak_is_scalar {
+    use bitcoin::secp256k1::Scalar;
+    use hex_conservative::{DisplayHex, FromHex};
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(value: Scalar, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&format!("{}", value.to_be_bytes().as_hex()))
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Scalar, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let scalar = String::deserialize(deserializer)?;
+        let scalar = Vec::from_hex(&scalar).unwrap();
+        let scalar = Scalar::from_be_bytes(scalar.try_into().unwrap()).unwrap();
+        Ok(scalar)
     }
 }
 
