@@ -19,7 +19,6 @@ mod tests {
         Amount, OutPoint, ScriptBuf, XOnlyPublicKey,
     };
     use bitcoin_hashes::Hash;
-
     use std::{
         collections::{BTreeSet, HashMap},
         fs::File,

@@ -14,6 +14,7 @@
 // <https://www.gnu.org/licenses/>.
 
 mod pubkey_extraction;
+mod receiver;
 mod sender;
 mod tagged_hashes;
 mod test_data;
