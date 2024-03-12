@@ -8,14 +8,12 @@ use hex_conservative::DisplayHex;
 pub struct SilentPaymentAddress {
     pub b_scan: PublicKey,
     pub b_spend: PublicKey,
-    pub label: Option<u32>,
 }
 impl SilentPaymentAddress {
-    pub fn new(b_scan: &PublicKey, b_spend: &PublicKey, label: Option<u32>) -> Self {
+    pub fn new(b_scan: &PublicKey, b_spend: &PublicKey) -> Self {
         Self {
             b_scan: *b_scan,
             b_spend: *b_spend,
-            label,
         }
     }
     pub fn from_bech32(bech32: &str) -> Self {
@@ -34,7 +32,7 @@ impl SilentPaymentAddress {
                     let (b_scan, b_spend) = address_bytes.split_at(33);
                     let b_scan = PublicKey::from_slice(b_scan).expect("b_scan slice");
                     let b_spend = PublicKey::from_slice(b_spend).expect("b_spend slice");
-                    SilentPaymentAddress::new(&b_scan, &b_spend, None)
+                    SilentPaymentAddress::new(&b_scan, &b_spend)
                 }
                 _ => panic!("Wrong witness version"),
             }
@@ -57,13 +55,15 @@ impl SilentPaymentAddress {
 }
 #[cfg(test)]
 mod tests {
-    use bitcoin::{key::Secp256k1, OutPoint, ScriptBuf, XOnlyPublicKey};
-
+    use super::SilentPaymentAddress;
     use crate::{
         pubkey_extraction::get_input_for_ssd,
+        tagged_hashes::LabelTagHash,
         test_data::{BIP352TestVectors, ReceivingObject},
         InputData,
     };
+    use bitcoin::{key::Secp256k1, secp256k1::Scalar, OutPoint, ScriptBuf, XOnlyPublicKey};
+    use bitcoin_hashes::Hash;
     use std::{fs::File, io::Read};
 
     fn get_bip352_test_vectors() -> BIP352TestVectors {
@@ -76,18 +76,24 @@ mod tests {
         file.read_to_string(&mut json).unwrap();
         serde_json::from_str(&json).unwrap()
     }
+
+    #[test]
     fn test_a() {
         let secp = Secp256k1::new();
         let test_vectors = get_bip352_test_vectors();
-        let receiving_objects: Vec<&ReceivingObject> = test_vectors
+        let receiving_objects: Vec<(&ReceivingObject, &String)> = test_vectors
             .test_vectors
             .iter()
             .flat_map(|test_case| {
                 println!("{}", test_case.comment);
-                test_case.receiving.iter()
+                test_case
+                    .receiving
+                    .iter()
+                    .map(move |receiving_object| (receiving_object, &test_case.comment))
             })
             .collect();
-        for receiving in receiving_objects.iter() {
+        for (receiving, comment) in receiving_objects.iter() {
+            println!("Comment: {}", comment);
             let given = &receiving.given;
             let expected = &receiving.expected;
             let outputs_to_check: Vec<XOnlyPublicKey> =
@@ -106,9 +112,33 @@ mod tests {
             let b_spend = &given.key_material.spend_priv_key;
             let b_scan_pubkey = b_scan.public_key(&secp);
             let b_spend_pubkey = b_spend.public_key(&secp);
-            let mut receiving_addresses = Vec::<String>::new();
+            let mut receiving_addresses = Vec::<SilentPaymentAddress>::new();
 
-            for (outpoint, input_for_ssd_pubkey) in vins {}
+            let address = SilentPaymentAddress::new(&b_scan_pubkey, &b_spend_pubkey);
+            receiving_addresses.push(address);
+
+            for label in given.labels.iter() {
+                let tagged_label = LabelTagHash::new(b_scan, *label);
+                let scalar_tag = Scalar::from_be_bytes(tagged_label.to_byte_array())
+                    .expect("labels are scalar-able");
+                let b_m = b_spend_pubkey
+                    .add_exp_tweak(&secp, &scalar_tag)
+                    .expect("pubkeys get tweaked by scalars");
+                let address = SilentPaymentAddress::new(&b_scan_pubkey, &b_m);
+                receiving_addresses.push(address);
+            }
+
+            for address in receiving_addresses.iter() {
+                assert!(expected.addresses.contains(&address.to_bech32()));
+            }
+            let addresses_as_strings: Vec<String> = receiving_addresses
+                .iter()
+                .map(|address| address.to_bech32())
+                .collect();
+            for address in expected.addresses.iter() {
+                println!("address: {}", addresses_as_strings[0]);
+                assert!(addresses_as_strings.contains(address));
+            }
         }
     }
 }

@@ -15,7 +15,11 @@
 
 use std::collections::BTreeSet;
 
-use bitcoin::{consensus::Encodable, secp256k1::PublicKey, OutPoint};
+use bitcoin::{
+    consensus::Encodable,
+    secp256k1::{PublicKey, SecretKey},
+    OutPoint,
+};
 use bitcoin_hashes::{sha256t_hash_newtype, Hash, HashEngine};
 
 use crate::PublicKeySummation;
@@ -88,9 +92,9 @@ impl SharedSecretHash {
 }
 
 impl LabelTagHash {
-    pub fn new(b_scan: PublicKey, m: u32) -> LabelTagHash {
+    pub fn new(b_scan: &SecretKey, m: u32) -> LabelTagHash {
         let mut eng = LabelTagHash::engine();
-        eng.input(&b_scan.serialize());
+        eng.input(&b_scan.secret_bytes());
         eng.input(&m.to_be_bytes());
         LabelTagHash::from_engine(eng)
     }
