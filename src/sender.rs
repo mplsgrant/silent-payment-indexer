@@ -152,22 +152,11 @@ mod tests {
                     .recipients
                     .iter()
                     .map(|recipient| {
-                        // bech32 decoding in versions 10 & 11 work differntly.
-                        // let (hrp, data, _var) =
-                        //     bech32::decode(&recipient.recipient.0).expect("recipient");
-                        // let keys = Vec::<u8>::from_base32(&data[1..]).unwrap();
-                        // println!("{:?}", ((hrp, keys.as_hex()), recipient.recipient.1));
                         let address = SilentPaymentAddress::from_bech32(&recipient.recipient.0);
                         let amount =
                             Amount::from_btc(recipient.recipient.1).expect("amount parses");
                         (address.b_scan, address.b_spend, amount)
                     })
-                    // .map(|((_, keys), amount)| {
-                    //     let b_scan = BScan::from_slice(&keys[0..33]).expect("b_scan key fits");
-                    //     let b_m = Bm::from_slice(&keys[33..66]).expect("b_m key fits");
-                    //     let amount = Amount::from_btc(amount).expect("amount parses");
-                    //     (b_scan, b_m, amount)
-                    // })
                     .fold(
                         HashMap::<BScan, Vec<(Bm, Amount)>>::new(),
                         |mut grouping, (b_scan, b_m, amount)| {
