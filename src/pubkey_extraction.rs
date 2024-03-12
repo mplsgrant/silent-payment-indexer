@@ -21,12 +21,12 @@ pub enum InputForSSDPubKey {
     P2TRWithH,
 }
 impl InputForSSDPubKey {
-    pub fn pubkey(&self) -> Option<&PublicKey> {
+    pub fn pubkey(&self) -> Option<PublicKey> {
         match self {
-            InputForSSDPubKey::P2PKH { pubkey } => Some(pubkey),
-            InputForSSDPubKey::P2SH { pubkey } => Some(pubkey),
-            InputForSSDPubKey::P2WPKH { pubkey } => Some(pubkey),
-            InputForSSDPubKey::P2TR { pubkey } => Some(pubkey),
+            InputForSSDPubKey::P2PKH { pubkey } => Some(*pubkey),
+            InputForSSDPubKey::P2SH { pubkey } => Some(*pubkey),
+            InputForSSDPubKey::P2WPKH { pubkey } => Some(*pubkey),
+            InputForSSDPubKey::P2TR { pubkey } => Some(*pubkey),
             InputForSSDPubKey::P2TRWithH => None,
         }
     }
@@ -239,7 +239,7 @@ mod tests {
         match pubkey_from_input {
             InputForSSDPubKey::P2PKH { pubkey } => {
                 let pubkey_from_input = pubkey_from_input.pubkey();
-                assert_eq!(pubkey, *pubkey_from_input.unwrap());
+                assert_eq!(pubkey, pubkey_from_input.unwrap());
             }
             _ => panic!("was expecting p2pkh"),
         }
@@ -264,7 +264,7 @@ mod tests {
         match pubkey_from_input {
             InputForSSDPubKey::P2PKH { pubkey } => {
                 let pubkey_from_input = pubkey_from_input.pubkey();
-                assert_eq!(pubkey, *pubkey_from_input.unwrap());
+                assert_eq!(pubkey, pubkey_from_input.unwrap());
             }
             _ => panic!("was expecting p2pkh"),
         }
@@ -290,7 +290,7 @@ mod tests {
         match pubkey_from_input {
             InputForSSDPubKey::P2SH { pubkey } => {
                 let pubkey_from_input = pubkey_from_input.pubkey();
-                assert_eq!(pubkey, *pubkey_from_input.unwrap());
+                assert_eq!(pubkey, pubkey_from_input.unwrap());
             }
             _ => panic!("was only expecting p2sh-p2wpkh"),
         }
@@ -315,7 +315,7 @@ mod tests {
         match pubkey_from_input {
             InputForSSDPubKey::P2WPKH { pubkey } => {
                 let pubkey_from_input = pubkey_from_input.pubkey();
-                assert_eq!(pubkey, *pubkey_from_input.unwrap());
+                assert_eq!(pubkey, pubkey_from_input.unwrap());
             }
             _ => panic!("was only expecting p2wpkh"),
         }
@@ -341,7 +341,7 @@ mod tests {
                 );
                 let pubkey_from_input = get_input_for_ssd(&vin).unwrap();
                 let pubkey_from_input = pubkey_from_input.pubkey();
-                assert_eq!(pubkey.public_key(Parity::Even), *pubkey_from_input.unwrap());
+                assert_eq!(pubkey.public_key(Parity::Even), pubkey_from_input.unwrap());
             }
             XOnlyScenario::XOnlyWithH => panic!("was not expecting H"),
         }

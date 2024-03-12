@@ -110,7 +110,7 @@ mod tests {
                             }
                             if let Some(pubkey) = input_for_ssd.pubkey() {
                                 if let Some(private_key) = private_key {
-                                    assert_eq!(private_key.public_key(&secp), *pubkey);
+                                    assert_eq!(private_key.public_key(&secp), pubkey);
                                 }
                             }
                             (priv_keys, pubkeys, outpoints)
@@ -121,6 +121,16 @@ mod tests {
                     .into_iter()
                     .next()
                     .and_then(|smallest_outpoint| SmallestOutpoint::new(&[smallest_outpoint]));
+
+                let pubkeys: Vec<&PublicKey> = pubkeys.iter().collect(); // TODO Can we push the referencing up?
+                let maybe_pubkey_summation = PublicKeySummation::new(pubkeys.as_slice());
+
+                let maybe_input_hash = match (maybe_smallest_outpoint, maybe_pubkey_summation) {
+                    (Some(smallest_outpoint), Some(pubkey_summation)) => {
+                        Some(InputsHash::new(smallest_outpoint, &pubkey_summation))
+                    }
+                    _ => None,
+                };
 
                 // Let a = a1 + a2 + ... + an, where each ai has been negated if necessary
                 let maybe_secret_key_summation =
@@ -136,16 +146,6 @@ mod tests {
                             first_sk
                         }
                     });
-
-                let pubkeys: Vec<&PublicKey> = pubkeys.iter().collect(); // TODO Can we push the referencing up?
-                let maybe_pubkey_summation = PublicKeySummation::new(pubkeys.as_slice());
-
-                let maybe_input_hash = match (maybe_smallest_outpoint, maybe_pubkey_summation) {
-                    (Some(smallest_outpoint), Some(pubkey_summation)) => {
-                        Some(InputsHash::new(smallest_outpoint, &pubkey_summation))
-                    }
-                    _ => None,
-                };
 
                 let outputs = sending_example
                     .given

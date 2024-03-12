@@ -102,9 +102,8 @@ impl LabelTagHash {
 
 #[cfg(test)]
 mod tests {
-    use bitcoin::Txid;
-
     use super::*;
+    use bitcoin::Txid;
 
     #[test]
     fn smallest_outpoints() {
