@@ -1,9 +1,19 @@
+use std::collections::{HashMap, HashSet};
+
 use bech32::{
-    primitives::decode::{CheckedHrpstring, UncheckedHrpstring},
-    Bech32, Bech32m, ByteIterExt, Fe32, Fe32IterExt, Hrp,
+    primitives::decode::UncheckedHrpstring, Bech32, Bech32m, ByteIterExt, Fe32, Fe32IterExt, Hrp,
 };
-use bitcoin::secp256k1::PublicKey;
-use hex_conservative::DisplayHex;
+use bitcoin::secp256k1::{PublicKey, Scalar, Secp256k1, SecretKey, Verification, XOnlyPublicKey};
+use bitcoin_hashes::Hash;
+use hex_conservative::{Case, DisplayHex, FromHex};
+
+use crate::{
+    tagged_hashes::{InputsHash, SharedSecretHash},
+    PublicKeySummation,
+};
+
+type MGHex = String;
+type LabelHashHex = String;
 
 pub struct SilentPaymentAddress {
     pub b_scan: PublicKey,
@@ -53,27 +63,154 @@ impl SilentPaymentAddress {
             .collect()
     }
 }
+
+#[allow(non_snake_case)]
+fn scanning<C: Verification>(
+    secp: &Secp256k1<C>,
+    input_hash: &InputsHash,
+    b_scan: &SecretKey,
+    B_spend: &PublicKey,
+    pubkey_summation: &PublicKeySummation,
+    outputs_to_check: &mut HashSet<XOnlyPublicKey>,
+    precomputed_labels: HashMap<MGHex, LabelHashHex>,
+) {
+    type PubKeyHex = String;
+    type PrivKeyTweakHex = String;
+    // scanning
+    //  ecdh_shared_secret = input_hash·A_sum·b_scan
+    let input_hash_scalar =
+        Scalar::from_be_bytes(input_hash.to_byte_array()).expect("input_hash converts to scalar");
+    let input_hash_bscan = b_scan
+        .mul_tweak(&input_hash_scalar)
+        .expect("scalars multiply");
+    let input_hash_bscan =
+        Scalar::from_be_bytes(input_hash_bscan.secret_bytes()).expect("secret key scalars");
+    let ecdh_shared_secret = pubkey_summation
+        .inner
+        .mul_tweak(&secp, &input_hash_bscan)
+        .expect("scalars should tweak");
+    let mut k = 0;
+    let mut wallet = Vec::<(PubKeyHex, PrivKeyTweakHex)>::new();
+    let mut output_to_remove = None::<XOnlyPublicKey>;
+    let mut escape_hatch = 25;
+    loop {
+        let t_k = SharedSecretHash::new(&ecdh_shared_secret, k);
+        let t_k = Scalar::from_be_bytes(t_k.to_byte_array()).expect("hash to scalar");
+        let (P_k, _parity) = B_spend
+            .add_exp_tweak(&secp, &t_k)
+            .expect("scalar to tweak")
+            .x_only_public_key();
+
+        if let Some(pubkey) = output_to_remove {
+            outputs_to_check.remove(&pubkey);
+        }
+        for output in outputs_to_check.iter() {
+            if &P_k == output {
+                wallet.push((
+                    P_k.serialize().to_hex_string(Case::Lower),
+                    t_k.to_be_bytes().to_hex_string(Case::Lower),
+                ));
+                k += 1;
+                output_to_remove = Some(*output);
+                break;
+            }
+            if !precomputed_labels.is_empty() {
+                // m_G_sub = output - P_k
+                let m_g_sub = xonly_minus_xonly(&secp, output, &P_k);
+                let m_g_sub_key = m_g_sub.serialize().to_hex_string(Case::Lower);
+                if let Some(label) = precomputed_labels.get(&m_g_sub_key) {
+                    let m_g_sub_scalar =
+                        Scalar::from_be_bytes(m_g_sub.x_only_public_key().0.serialize())
+                            .expect("scalar from x_only pubkey");
+                    let P_km = P_k
+                        .add_tweak(&secp, &m_g_sub_scalar)
+                        .expect("add scalar tweak");
+                    let pub_key = P_km.0.serialize().to_hex_string(Case::Lower);
+                    let priv_key_tweak = SecretKey::from_slice(&t_k.to_be_bytes())
+                        .expect("scalar becomes secretkey")
+                        .add_tweak(
+                            &Scalar::from_be_bytes(
+                                <[u8; 32]>::from_hex(label).expect("label fits in 32"),
+                            )
+                            .expect("label to scalar"),
+                        )
+                        .expect("scalar to tweak");
+                    wallet.push((pub_key, priv_key_tweak.display_secret().to_string()));
+                    output_to_remove = Some(*output);
+                    k += 1;
+                } else {
+                    let m_G_sub = xonly_minus_xonly(&secp, output, &P_k);
+                    let m_g_sub_key = m_G_sub.serialize().to_hex_string(Case::Lower);
+                    if let Some(label) = precomputed_labels.get(&m_g_sub_key) {
+                        let m_g_sub_scalar =
+                            Scalar::from_be_bytes(m_g_sub.x_only_public_key().0.serialize())
+                                .expect("scalar from x_only pubkey");
+                        let P_km = P_k
+                            .add_tweak(&secp, &m_g_sub_scalar)
+                            .expect("add scalar tweak");
+                        let pub_key = P_km.0.serialize().to_hex_string(Case::Lower);
+                        let priv_key_tweak = SecretKey::from_slice(&t_k.to_be_bytes())
+                            .expect("scalar becomes secretkey")
+                            .add_tweak(
+                                &Scalar::from_be_bytes(
+                                    <[u8; 32]>::from_hex(label).expect("label fits in 32"),
+                                )
+                                .expect("label to scalar"),
+                            )
+                            .expect("scalar to tweak");
+                        wallet.push((pub_key, priv_key_tweak.display_secret().to_string()));
+                        output_to_remove = Some(*output);
+                        k += 1;
+                        break;
+                    }
+                };
+            }
+        }
+        escape_hatch -= 1;
+        if escape_hatch == 0 {
+            break;
+        }
+    }
+}
+
+fn public_key_minus_xonly<C: Verification>(
+    secp: &Secp256k1<C>,
+    left: &PublicKey,
+    right: &XOnlyPublicKey,
+) -> PublicKey {
+    left.combine(&right.public_key(bitcoin::key::Parity::Even).negate(&secp))
+        .expect("combine with a negative")
+}
+
+fn xonly_minus_xonly<C: Verification>(
+    secp: &Secp256k1<C>,
+    left: &XOnlyPublicKey,
+    right: &XOnlyPublicKey,
+) -> PublicKey {
+    left.public_key(bitcoin::key::Parity::Even)
+        .combine(&right.public_key(bitcoin::key::Parity::Even).negate(&secp))
+        .expect("combine with a negative")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::SilentPaymentAddress;
+    use super::*;
     use crate::{
         pubkey_extraction::get_input_for_ssd,
-        tagged_hashes::{
-            InputsHash, LabelTagHash, SharedSecretHash, SharedSecretTag, SmallestOutpoint,
-        },
+        tagged_hashes::{InputsHash, LabelTagHash, SmallestOutpoint},
         test_data::{BIP352TestVectors, ReceivingObject},
         InputData, PublicKeySummation,
     };
     use bitcoin::{
-        key::{Secp256k1, TapTweak},
+        key::Secp256k1,
         secp256k1::{PublicKey, Scalar, SecretKey},
         OutPoint, ScriptBuf, XOnlyPublicKey,
     };
     use bitcoin_hashes::Hash;
-    use hex_conservative::DisplayHex;
+    use hex_conservative::{Case, DisplayHex};
+
     use std::{
         collections::{BTreeSet, HashMap, HashSet},
-        fmt::format,
         fs::File,
         io::Read,
     };
@@ -89,6 +226,7 @@ mod tests {
         serde_json::from_str(&json).unwrap()
     }
 
+    #[allow(non_snake_case)]
     #[test]
     fn test_a() {
         let secp = Secp256k1::new();
@@ -110,36 +248,46 @@ mod tests {
             let expected = &receiving.expected;
             let mut outputs_to_check: HashSet<XOnlyPublicKey> =
                 given.outputs.iter().map(|output| output.output).collect();
-            let vins = given.vin.iter().flat_map(|vin| {
-                let prevout = ScriptBuf::from_hex(&vin.prevout.script_pubkey.hex).unwrap();
-                let input_data = InputData {
-                    prevout: &prevout,
-                    script_sig: vin.script_sig.as_deref(),
-                    txinwitness: vin.txinwitness.as_ref(),
-                };
-                let out_point = OutPoint::new(vin.txid, vin.vout);
-                get_input_for_ssd(&input_data).map(|input_for_ssd| (out_point, input_for_ssd))
-            });
+            let (pubkeys, outpoint_set) = given
+                .vin
+                .iter()
+                .flat_map(|vin| {
+                    let prevout = ScriptBuf::from_hex(&vin.prevout.script_pubkey.hex).unwrap();
+                    let input_data = InputData {
+                        prevout: &prevout,
+                        script_sig: vin.script_sig.as_deref(),
+                        txinwitness: vin.txinwitness.as_ref(),
+                    };
+                    let out_point = OutPoint::new(vin.txid, vin.vout);
+                    get_input_for_ssd(&input_data).map(|input_for_ssd| (out_point, input_for_ssd))
+                })
+                .fold(
+                    (Vec::<PublicKey>::new(), BTreeSet::<OutPoint>::new()),
+                    |(mut pubkeys, mut outpoint_set), (outpoint, input_for_ssd_pubkey)| {
+                        if let Some(pubkey) = input_for_ssd_pubkey.pubkey() {
+                            pubkeys.push(pubkey);
+                        }
+                        outpoint_set.insert(outpoint);
+                        (pubkeys, outpoint_set)
+                    },
+                );
             let b_scan = &given.key_material.scan_priv_key;
             let b_spend = &given.key_material.spend_priv_key;
-            let b_scan_pubkey = b_scan.public_key(&secp);
-            let b_spend_pubkey = b_spend.public_key(&secp);
+            let B_scan = b_scan.public_key(&secp);
+            let B_spend = b_spend.public_key(&secp);
             let mut receiving_addresses = Vec::<SilentPaymentAddress>::new();
-
-            let address = SilentPaymentAddress::new(&b_scan_pubkey, &b_spend_pubkey);
+            let address = SilentPaymentAddress::new(&B_scan, &B_spend);
             receiving_addresses.push(address);
-
             for label in given.labels.iter() {
                 let tagged_label = LabelTagHash::new(b_scan, *label);
                 let scalar_tag = Scalar::from_be_bytes(tagged_label.to_byte_array())
                     .expect("labels are scalar-able");
-                let b_m = b_spend_pubkey
+                let b_m = B_spend
                     .add_exp_tweak(&secp, &scalar_tag)
                     .expect("pubkeys get tweaked by scalars");
-                let address = SilentPaymentAddress::new(&b_scan_pubkey, &b_m);
+                let address = SilentPaymentAddress::new(&B_scan, &b_m);
                 receiving_addresses.push(address);
             }
-
             for address in receiving_addresses.iter() {
                 assert!(expected.addresses.contains(&address.to_bech32()));
             }
@@ -150,17 +298,6 @@ mod tests {
             for address in expected.addresses.iter() {
                 assert!(addresses_as_strings.contains(address));
             }
-
-            let (pubkeys, outpoint_set) = vins.fold(
-                (Vec::<PublicKey>::new(), BTreeSet::<OutPoint>::new()),
-                |(mut pubkeys, mut outpoint_set), (outpoint, input_for_ssd_pubkey)| {
-                    if let Some(pubkey) = input_for_ssd_pubkey.pubkey() {
-                        pubkeys.push(pubkey);
-                    }
-                    outpoint_set.insert(outpoint);
-                    (pubkeys, outpoint_set)
-                },
-            );
             if !pubkeys.is_empty() {
                 let pubkeys: Vec<&PublicKey> = pubkeys.iter().collect();
                 let pubkey_summation = PublicKeySummation::new(&pubkeys).expect("pubkeys");
@@ -169,8 +306,6 @@ mod tests {
                         .expect("outpoint exists");
                 let input_hash = InputsHash::new(smallest_outpoint, &pubkey_summation);
 
-                type MGHex = String;
-                type LabelHashHex = String;
                 let precomputed_labels: HashMap<MGHex, LabelHashHex> = given
                     .labels
                     .iter()
@@ -178,13 +313,10 @@ mod tests {
                     .map(|label_hash| {
                         let label_hash_secret = SecretKey::from_slice(label_hash.as_byte_array())
                             .expect("label hash converts to scalar");
-                        let m_g: String = format!(
-                            "{}",
-                            PublicKey::from_secret_key(&secp, &label_hash_secret)
-                                .serialize()
-                                .as_hex(),
-                        );
-                        let label_hash: String = format!("{}", label_hash.as_byte_array().as_hex());
+                        let m_g = PublicKey::from_secret_key(&secp, &label_hash_secret)
+                            .serialize()
+                            .to_hex_string(Case::Lower);
+                        let label_hash = label_hash.as_byte_array().to_hex_string(Case::Lower);
                         (m_g, label_hash)
                     })
                     .fold(
@@ -194,66 +326,6 @@ mod tests {
                             precomputed_labels
                         },
                     );
-
-                type PubKeyHex = String;
-                type PrivKeyTweakHex = String;
-                // scanning
-                //  ecdh_shared_secret = input_hash·A_sum·b_scan
-                let input_hash_scalar = Scalar::from_be_bytes(input_hash.to_byte_array())
-                    .expect("input_hash converts to scalar");
-                let input_hash_bscan = b_scan
-                    .mul_tweak(&input_hash_scalar)
-                    .expect("scalars multiply");
-                let input_hash_bscan = Scalar::from_be_bytes(input_hash_bscan.secret_bytes())
-                    .expect("secret key scalars");
-                let ecdh_shared_secret = pubkey_summation
-                    .inner
-                    .mul_tweak(&secp, &input_hash_bscan)
-                    .expect("scalars should tweak");
-                let mut k = 0;
-                let mut wallet = Vec::<(PubKeyHex, PrivKeyTweakHex)>::new();
-                let mut output_to_remove = None::<XOnlyPublicKey>;
-                let mut escape_hatch = 25;
-                loop {
-                    let t_k = SharedSecretHash::new(&ecdh_shared_secret, k);
-                    let t_k = Scalar::from_be_bytes(t_k.to_byte_array()).expect("hash to scalar");
-                    let (p_k_public, _parity) = b_spend_pubkey
-                        .add_exp_tweak(&secp, &t_k)
-                        .expect("scalar to tweak")
-                        .x_only_public_key();
-
-                    if let Some(pubkey) = output_to_remove {
-                        outputs_to_check.remove(&pubkey);
-                    }
-                    for output in outputs_to_check.iter() {
-                        if &p_k_public == output {
-                            wallet.push((
-                                format!("{}", p_k_public.serialize().as_hex()),
-                                format!("{}", t_k.to_be_bytes().as_hex()),
-                            ));
-                            k += 1;
-                            output_to_remove = Some(*output);
-                            break;
-                        } else if !precomputed_labels.is_empty() {
-                            // m_G_sub = output - P_k
-                            let m_g_sub = output
-                                .public_key(bitcoin::key::Parity::Even)
-                                .combine(
-                                    &p_k_public
-                                        .public_key(bitcoin::key::Parity::Even)
-                                        .negate(&secp),
-                                )
-                                .expect("combine with a negative");
-                        }
-                    }
-                    escape_hatch -= 1;
-                    if escape_hatch == 0 {
-                        break;
-                    }
-                }
-
-                // P_k = B_spend + t_k * G
-                // m_G = output - P_k
             }
         }
     }
