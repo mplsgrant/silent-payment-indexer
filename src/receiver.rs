@@ -168,6 +168,7 @@ fn scanning<C: Verification>(
         }
         escape_hatch -= 1;
         if escape_hatch == 0 {
+            // TODO remove
             break;
         }
     }
