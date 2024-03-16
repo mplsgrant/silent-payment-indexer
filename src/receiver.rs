@@ -67,19 +67,16 @@ impl SilentPaymentAddress {
 #[allow(non_snake_case)]
 fn scanning<C: Verification>(
     secp: &Secp256k1<C>,
-    input_hash: &InputsHash,
+    inputs_hash: &InputsHash,
     b_scan: &SecretKey,
     B_spend: &PublicKey,
     pubkey_summation: &PublicKeySummation,
     outputs_to_check: &mut HashSet<XOnlyPublicKey>,
     precomputed_labels: HashMap<MGHex, LabelHashHex>,
-) {
-    type PubKeyHex = String;
-    type PrivKeyTweakHex = String;
-    // scanning
+) -> Vec<(PublicKey, SecretKey)> {
     //  ecdh_shared_secret = input_hash·A_sum·b_scan
     let input_hash_scalar =
-        Scalar::from_be_bytes(input_hash.to_byte_array()).expect("input_hash converts to scalar");
+        Scalar::from_be_bytes(inputs_hash.to_byte_array()).expect("input_hash converts to scalar");
     let input_hash_bscan = b_scan
         .mul_tweak(&input_hash_scalar)
         .expect("scalars multiply");
@@ -90,14 +87,14 @@ fn scanning<C: Verification>(
         .mul_tweak(&secp, &input_hash_bscan)
         .expect("scalars should tweak");
     let mut k = 0;
-    let mut wallet = Vec::<(PubKeyHex, PrivKeyTweakHex)>::new();
+    let mut wallet = Vec::<(PublicKey, SecretKey)>::new();
     let mut output_to_remove = None::<XOnlyPublicKey>;
     let mut escape_hatch = 25;
     loop {
         let t_k = SharedSecretHash::new(&ecdh_shared_secret, k);
         let t_k = Scalar::from_be_bytes(t_k.to_byte_array()).expect("hash to scalar");
-        let (P_k, _parity) = B_spend
-            .add_exp_tweak(&secp, &t_k)
+        let (P_k, parity) = B_spend
+            .add_exp_tweak(secp, &t_k)
             .expect("scalar to tweak")
             .x_only_public_key();
 
@@ -107,8 +104,8 @@ fn scanning<C: Verification>(
         for output in outputs_to_check.iter() {
             if &P_k == output {
                 wallet.push((
-                    P_k.serialize().to_hex_string(Case::Lower),
-                    t_k.to_be_bytes().to_hex_string(Case::Lower),
+                    P_k.public_key(parity),
+                    SecretKey::from_slice(&t_k.to_be_bytes()).unwrap(),
                 ));
                 k += 1;
                 output_to_remove = Some(*output);
@@ -116,16 +113,16 @@ fn scanning<C: Verification>(
             }
             if !precomputed_labels.is_empty() {
                 // m_G_sub = output - P_k
-                let m_g_sub = xonly_minus_xonly(&secp, output, &P_k);
+                let m_g_sub = xonly_minus_xonly(secp, output, &P_k);
                 let m_g_sub_key = m_g_sub.serialize().to_hex_string(Case::Lower);
                 if let Some(label) = precomputed_labels.get(&m_g_sub_key) {
                     let m_g_sub_scalar =
                         Scalar::from_be_bytes(m_g_sub.x_only_public_key().0.serialize())
                             .expect("scalar from x_only pubkey");
                     let P_km = P_k
-                        .add_tweak(&secp, &m_g_sub_scalar)
+                        .add_tweak(secp, &m_g_sub_scalar)
                         .expect("add scalar tweak");
-                    let pub_key = P_km.0.serialize().to_hex_string(Case::Lower);
+                    let pub_key = P_km.0.public_key(P_km.1);
                     let priv_key_tweak = SecretKey::from_slice(&t_k.to_be_bytes())
                         .expect("scalar becomes secretkey")
                         .add_tweak(
@@ -135,7 +132,7 @@ fn scanning<C: Verification>(
                             .expect("label to scalar"),
                         )
                         .expect("scalar to tweak");
-                    wallet.push((pub_key, priv_key_tweak.display_secret().to_string()));
+                    wallet.push((pub_key, priv_key_tweak));
                     output_to_remove = Some(*output);
                     k += 1;
                 } else {
@@ -148,7 +145,7 @@ fn scanning<C: Verification>(
                         let P_km = P_k
                             .add_tweak(&secp, &m_g_sub_scalar)
                             .expect("add scalar tweak");
-                        let pub_key = P_km.0.serialize().to_hex_string(Case::Lower);
+                        let pub_key = P_km.0.public_key(P_km.1);
                         let priv_key_tweak = SecretKey::from_slice(&t_k.to_be_bytes())
                             .expect("scalar becomes secretkey")
                             .add_tweak(
@@ -158,7 +155,7 @@ fn scanning<C: Verification>(
                                 .expect("label to scalar"),
                             )
                             .expect("scalar to tweak");
-                        wallet.push((pub_key, priv_key_tweak.display_secret().to_string()));
+                        wallet.push((pub_key, priv_key_tweak));
                         output_to_remove = Some(*output);
                         k += 1;
                         break;
@@ -172,6 +169,7 @@ fn scanning<C: Verification>(
             break;
         }
     }
+    wallet
 }
 
 fn public_key_minus_xonly<C: Verification>(
@@ -203,17 +201,18 @@ mod tests {
         InputData, PublicKeySummation,
     };
     use bitcoin::{
-        key::Secp256k1,
-        secp256k1::{PublicKey, Scalar, SecretKey},
+        key::{Keypair, Parity, Secp256k1},
+        secp256k1::{schnorr::Signature, Message, PublicKey, Scalar, SecretKey},
         OutPoint, ScriptBuf, XOnlyPublicKey,
     };
-    use bitcoin_hashes::Hash;
+    use bitcoin_hashes::{sha256, Hash};
     use hex_conservative::{Case, DisplayHex};
 
     use std::{
         collections::{BTreeSet, HashMap, HashSet},
         fs::File,
         io::Read,
+        str::FromStr,
     };
 
     fn get_bip352_test_vectors() -> BIP352TestVectors {
@@ -244,7 +243,7 @@ mod tests {
             })
             .collect();
         for (receiving, comment) in receiving_objects.iter() {
-            println!("Comment: {}", comment);
+            println!("Receiving: {}", comment);
             let given = &receiving.given;
             let expected = &receiving.expected;
             let mut outputs_to_check: HashSet<XOnlyPublicKey> =
@@ -305,7 +304,7 @@ mod tests {
                 let smallest_outpoint =
                     SmallestOutpoint::new(&[*outpoint_set.iter().next().expect("outpoint exists")])
                         .expect("outpoint exists");
-                let input_hash = InputsHash::new(smallest_outpoint, &pubkey_summation);
+                let inputs_hash = InputsHash::new(smallest_outpoint, &pubkey_summation);
 
                 let precomputed_labels: HashMap<MGHex, LabelHashHex> = given
                     .labels
@@ -327,6 +326,58 @@ mod tests {
                             precomputed_labels
                         },
                     );
+                let add_to_wallet = scanning(
+                    &secp,
+                    &inputs_hash,
+                    b_scan,
+                    &B_spend,
+                    &pubkey_summation,
+                    &mut outputs_to_check,
+                    precomputed_labels,
+                );
+
+                let expected_pubkeys: Vec<XOnlyPublicKey> =
+                    expected.outputs.iter().map(|exp| exp.pub_key).collect();
+                let expected_priv_key: Vec<Scalar> = expected
+                    .outputs
+                    .iter()
+                    .map(|exp| exp.priv_key_tweak)
+                    .collect();
+                let expected_sig: Vec<Signature> =
+                    expected.outputs.iter().map(|exp| exp.signature).collect();
+
+                add_to_wallet
+                    .iter()
+                    .map(|output| {
+                        let pubkey = output.0;
+                        let private_key_tweak =
+                            Scalar::from_be_bytes(output.1.secret_bytes()).unwrap();
+                        let mut full_private_key = b_spend.add_tweak(&private_key_tweak).unwrap();
+                        if full_private_key.public_key(&secp).x_only_public_key().1 == Parity::Odd {
+                            full_private_key = full_private_key.negate();
+                        }
+                        let keypair = Keypair::from_secret_key(&secp, &full_private_key);
+                        let msg = Message::from_hashed_data::<sha256::Hash>("message".as_bytes());
+                        let aux_rand = sha256::Hash::hash("random auxiliary data".as_bytes());
+                        let sig = &secp.sign_schnorr_with_aux_rand(
+                            &msg,
+                            &keypair,
+                            aux_rand.as_byte_array(),
+                        );
+                        assert!(pubkey
+                            .x_only_public_key()
+                            .0
+                            .verify(&secp, &msg, sig)
+                            .is_ok());
+                        (pubkey, full_private_key, *sig)
+                    })
+                    .map(|(pubkey, secret_key, sig)| {
+                        assert!(expected_pubkeys.contains(&pubkey.x_only_public_key().0));
+                        assert!(expected_priv_key
+                            .contains(&Scalar::from_be_bytes(secret_key.secret_bytes()).unwrap()));
+                        assert!(expected_sig.contains(&sig));
+                    })
+                    .for_each(drop);
             }
         }
     }

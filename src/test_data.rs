@@ -1,5 +1,5 @@
 use bitcoin::{
-    secp256k1::{schnorr::Signature, SecretKey},
+    secp256k1::{schnorr::Signature, Scalar, SecretKey},
     Amount, ScriptBuf, Txid, Witness, XOnlyPublicKey,
 };
 use serde::{Deserialize, Serialize};
@@ -51,7 +51,8 @@ pub struct ReceivingExpected {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ReceivingExpectedOutputs {
     pub pub_key: XOnlyPublicKey,
-    pub priv_key_tweak: String,
+    #[serde(with = "priv_key_tweak_is_scalar")]
+    pub priv_key_tweak: Scalar,
     pub signature: Signature,
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -188,7 +189,7 @@ mod priv_key_tweak_is_scalar {
     use hex_conservative::{DisplayHex, FromHex};
     use serde::{Deserialize, Deserializer, Serializer};
 
-    pub fn serialize<S>(value: Scalar, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(value: &Scalar, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
