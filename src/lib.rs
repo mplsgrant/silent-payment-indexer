@@ -18,8 +18,11 @@ mod receiver;
 mod sender;
 mod tagged_hashes;
 mod test_data;
+use std::fmt::Display;
+
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::{Script, ScriptBuf, Witness, XOnlyPublicKey};
+use hex_conservative::DisplayHex;
 use once_cell::sync::Lazy;
 
 /// "Nothing Up My Sleeves" number from BIP 341: 0x50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0
@@ -29,7 +32,7 @@ static NUMS: [u8; 32] = [
 ];
 static NUMS_PUBKEY: Lazy<XOnlyPublicKey> = Lazy::new(|| XOnlyPublicKey::from_slice(&NUMS).unwrap());
 
-#[derive(Clone)]
+#[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct PublicKeySummation {
     inner: PublicKey,
 }
@@ -41,6 +44,11 @@ impl PublicKeySummation {
     }
     fn public_key(&self) -> PublicKey {
         self.inner
+    }
+}
+impl Display for PublicKeySummation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.inner.serialize().as_hex())
     }
 }
 

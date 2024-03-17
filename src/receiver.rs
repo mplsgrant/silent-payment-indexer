@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Display,
+};
 
 use bech32::{
     primitives::decode::UncheckedHrpstring, Bech32, Bech32m, ByteIterExt, Fe32, Fe32IterExt, Hrp,
@@ -15,6 +18,7 @@ use crate::{
 type MGHex = String;
 type LabelHashHex = String;
 
+#[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct SilentPaymentAddress {
     pub b_scan: PublicKey,
     pub b_spend: PublicKey,
@@ -63,6 +67,11 @@ impl SilentPaymentAddress {
             .collect()
     }
 }
+impl Display for SilentPaymentAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_bech32())
+    }
+}
 
 #[allow(non_snake_case)]
 fn scanning<C: Verification>(
@@ -84,7 +93,7 @@ fn scanning<C: Verification>(
         Scalar::from_be_bytes(input_hash_bscan.secret_bytes()).expect("secret key scalars");
     let ecdh_shared_secret = pubkey_summation
         .inner
-        .mul_tweak(&secp, &input_hash_bscan)
+        .mul_tweak(secp, &input_hash_bscan)
         .expect("scalars should tweak");
     let mut k = 0;
     let mut wallet = Vec::<(PublicKey, SecretKey)>::new();
@@ -107,20 +116,20 @@ fn scanning<C: Verification>(
                     P_k.public_key(parity),
                     SecretKey::from_slice(&t_k.to_be_bytes()).unwrap(),
                 ));
-                k += 1;
                 output_to_remove = Some(*output);
+                k += 1;
                 break;
             }
             if !precomputed_labels.is_empty() {
                 // m_G_sub = output - P_k
-                let m_g_sub = xonly_minus_xonly(secp, output, &P_k);
-                let m_g_sub_key = m_g_sub.serialize().to_hex_string(Case::Lower);
-                if let Some(label) = precomputed_labels.get(&m_g_sub_key) {
-                    let m_g_sub_scalar =
-                        Scalar::from_be_bytes(m_g_sub.x_only_public_key().0.serialize())
+                let m_G_sub = xonly_minus_xonly(secp, output, &P_k);
+                let m_G_sub_key = m_G_sub.serialize().to_lower_hex_string();
+                if let Some(label) = precomputed_labels.get(&m_G_sub_key) {
+                    let m_G_sub_scalar =
+                        Scalar::from_be_bytes(m_G_sub.x_only_public_key().0.serialize())
                             .expect("scalar from x_only pubkey");
                     let P_km = P_k
-                        .add_tweak(secp, &m_g_sub_scalar)
+                        .add_tweak(secp, &m_G_sub_scalar)
                         .expect("add scalar tweak");
                     let pub_key = P_km.0.public_key(P_km.1);
                     let priv_key_tweak = SecretKey::from_slice(&t_k.to_be_bytes())
@@ -140,7 +149,7 @@ fn scanning<C: Verification>(
                     let m_g_sub_key = m_G_sub.serialize().to_hex_string(Case::Lower);
                     if let Some(label) = precomputed_labels.get(&m_g_sub_key) {
                         let m_g_sub_scalar =
-                            Scalar::from_be_bytes(m_g_sub.x_only_public_key().0.serialize())
+                            Scalar::from_be_bytes(m_G_sub.x_only_public_key().0.serialize())
                                 .expect("scalar from x_only pubkey");
                         let P_km = P_k
                             .add_tweak(&secp, &m_g_sub_scalar)
@@ -235,7 +244,6 @@ mod tests {
             .test_vectors
             .iter()
             .flat_map(|test_case| {
-                println!("{}", test_case.comment);
                 test_case
                     .receiving
                     .iter()
@@ -248,7 +256,7 @@ mod tests {
             let expected = &receiving.expected;
             let mut outputs_to_check: HashSet<XOnlyPublicKey> =
                 given.outputs.iter().map(|output| output.output).collect();
-            let (pubkeys, outpoint_set) = given
+            let (given_pubkeys, given_outpoints) = given
                 .vin
                 .iter()
                 .flat_map(|vin| {
@@ -280,30 +288,47 @@ mod tests {
             receiving_addresses.push(address);
             for label in given.labels.iter() {
                 let tagged_label = LabelTagHash::new(b_scan, *label);
+
+                // METHOD 1: one idea is to take the label hash and convert to a scalar and tweak the public key with it.
                 let scalar_tag = Scalar::from_be_bytes(tagged_label.to_byte_array())
                     .expect("labels are scalar-able");
-                let b_m = B_spend
+                let B_m = B_spend
                     .add_exp_tweak(&secp, &scalar_tag)
                     .expect("pubkeys get tweaked by scalars");
-                let address = SilentPaymentAddress::new(&B_scan, &b_m);
+
+                // METHOD 2: Another idea is to just convert the label hash into a public key via a secret key and combine that with B_spend
+                let tagged_label_as_secret_key =
+                    SecretKey::from_slice(tagged_label.as_byte_array())
+                        .expect("tagged label hash becomes a secret key");
+                let tagged_label_as_public_key = tagged_label_as_secret_key.public_key(&secp);
+                let B_m_using_method_2 = B_spend
+                    .combine(&tagged_label_as_public_key)
+                    .expect("combine using method 2");
+                assert_eq!(B_m, B_m_using_method_2);
+
+                let address = SilentPaymentAddress::new(&B_scan, &B_m);
                 receiving_addresses.push(address);
             }
-            for address in receiving_addresses.iter() {
-                assert!(expected.addresses.contains(&address.to_bech32()));
-            }
-            let addresses_as_strings: Vec<String> = receiving_addresses
+
+            let created_addresses: BTreeSet<String> = receiving_addresses
                 .iter()
                 .map(|address| address.to_bech32())
                 .collect();
-            for address in expected.addresses.iter() {
-                assert!(addresses_as_strings.contains(address));
-            }
-            if !pubkeys.is_empty() {
-                let pubkeys: Vec<&PublicKey> = pubkeys.iter().collect();
+
+            let expected_addresses: BTreeSet<String> = expected.addresses.iter().cloned().collect();
+            assert!(!&created_addresses.is_empty());
+            assert!(!&expected_addresses.is_empty());
+            assert_eq!(created_addresses.difference(&expected_addresses).count(), 0);
+
+            assert!(!given_pubkeys.is_empty());
+            if !given_pubkeys.is_empty() {
+                let pubkeys: Vec<&PublicKey> = given_pubkeys.iter().collect();
                 let pubkey_summation = PublicKeySummation::new(&pubkeys).expect("pubkeys");
-                let smallest_outpoint =
-                    SmallestOutpoint::new(&[*outpoint_set.iter().next().expect("outpoint exists")])
-                        .expect("outpoint exists");
+                let smallest_outpoint = SmallestOutpoint::new(&[*given_outpoints
+                    .iter()
+                    .next()
+                    .expect("outpoint exists")])
+                .expect("outpoint exists");
                 let inputs_hash = InputsHash::new(smallest_outpoint, &pubkey_summation);
 
                 let precomputed_labels: HashMap<MGHex, LabelHashHex> = given
@@ -315,8 +340,8 @@ mod tests {
                             .expect("label hash converts to scalar");
                         let m_g = PublicKey::from_secret_key(&secp, &label_hash_secret)
                             .serialize()
-                            .to_hex_string(Case::Lower);
-                        let label_hash = label_hash.as_byte_array().to_hex_string(Case::Lower);
+                            .to_lower_hex_string();
+                        let label_hash = label_hash.as_byte_array().to_lower_hex_string();
                         (m_g, label_hash)
                     })
                     .fold(
@@ -326,6 +351,7 @@ mod tests {
                             precomputed_labels
                         },
                     );
+
                 let add_to_wallet = scanning(
                     &secp,
                     &inputs_hash,
@@ -338,14 +364,16 @@ mod tests {
 
                 let expected_pubkeys: Vec<XOnlyPublicKey> =
                     expected.outputs.iter().map(|exp| exp.pub_key).collect();
-                let expected_priv_key: Vec<Scalar> = expected
+                let expected_priv_key_tweak: Vec<Scalar> = expected
                     .outputs
                     .iter()
                     .map(|exp| exp.priv_key_tweak)
                     .collect();
                 let expected_sig: Vec<Signature> =
                     expected.outputs.iter().map(|exp| exp.signature).collect();
-
+                // add_to_wallet.iter().for_each(|x| {
+                //     println!("{} {}", x.0.serialize().as_hex(), x.1.display_secret())
+                // });
                 add_to_wallet
                     .iter()
                     .map(|output| {
@@ -364,17 +392,20 @@ mod tests {
                             &keypair,
                             aux_rand.as_byte_array(),
                         );
+                        println!("msg: {}", msg);
+                        println!("pubkey: {}", pubkey.x_only_public_key().0);
+                        println!("full private: {}", full_private_key.display_secret());
+                        println!("sig: {}", sig);
                         assert!(pubkey
                             .x_only_public_key()
                             .0
                             .verify(&secp, &msg, sig)
                             .is_ok());
-                        (pubkey, full_private_key, *sig)
+                        (pubkey, private_key_tweak, *sig)
                     })
-                    .map(|(pubkey, secret_key, sig)| {
+                    .map(|(pubkey, private_key_tweak, sig)| {
                         assert!(expected_pubkeys.contains(&pubkey.x_only_public_key().0));
-                        assert!(expected_priv_key
-                            .contains(&Scalar::from_be_bytes(secret_key.secret_bytes()).unwrap()));
+                        assert!(expected_priv_key_tweak.contains(&private_key_tweak));
                         assert!(expected_sig.contains(&sig));
                     })
                     .for_each(drop);
