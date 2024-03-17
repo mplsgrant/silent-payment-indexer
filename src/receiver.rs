@@ -110,6 +110,9 @@ fn scanning<C: Verification>(
         if let Some(pubkey) = output_to_remove {
             outputs_to_check.remove(&pubkey);
         }
+        outputs_to_check
+            .iter()
+            .for_each(|x| println!("{}", x.serialize().as_hex()));
         for output in outputs_to_check.iter() {
             if &P_k == output {
                 wallet.push((
@@ -118,12 +121,17 @@ fn scanning<C: Verification>(
                 ));
                 output_to_remove = Some(*output);
                 k += 1;
+                println!(
+                    "output_to_remove: {}",
+                    output_to_remove.unwrap().serialize().as_hex()
+                );
                 break;
             }
             if !precomputed_labels.is_empty() {
                 // m_G_sub = output - P_k
                 let m_G_sub = xonly_minus_xonly(secp, output, &P_k);
                 let m_G_sub_key = m_G_sub.serialize().to_lower_hex_string();
+                println!("subkey: {}", m_G_sub_key);
                 if let Some(label) = precomputed_labels.get(&m_G_sub_key) {
                     let m_G_sub_scalar =
                         Scalar::from_be_bytes(m_G_sub.x_only_public_key().0.serialize())
@@ -143,16 +151,21 @@ fn scanning<C: Verification>(
                         .expect("scalar to tweak");
                     wallet.push((pub_key, priv_key_tweak));
                     output_to_remove = Some(*output);
+                    println!(
+                        "pub_key: {} \npriv_key_tweak: {}",
+                        pub_key.serialize().as_hex(),
+                        priv_key_tweak.display_secret()
+                    );
                     k += 1;
                 } else {
-                    let m_G_sub = xonly_minus_xonly(&secp, output, &P_k);
+                    let m_G_sub = xonly_minus_xonly(secp, output, &P_k);
                     let m_g_sub_key = m_G_sub.serialize().to_hex_string(Case::Lower);
                     if let Some(label) = precomputed_labels.get(&m_g_sub_key) {
                         let m_g_sub_scalar =
                             Scalar::from_be_bytes(m_G_sub.x_only_public_key().0.serialize())
                                 .expect("scalar from x_only pubkey");
                         let P_km = P_k
-                            .add_tweak(&secp, &m_g_sub_scalar)
+                            .add_tweak(secp, &m_g_sub_scalar)
                             .expect("add scalar tweak");
                         let pub_key = P_km.0.public_key(P_km.1);
                         let priv_key_tweak = SecretKey::from_slice(&t_k.to_be_bytes())
@@ -186,7 +199,7 @@ fn public_key_minus_xonly<C: Verification>(
     left: &PublicKey,
     right: &XOnlyPublicKey,
 ) -> PublicKey {
-    left.combine(&right.public_key(bitcoin::key::Parity::Even).negate(&secp))
+    left.combine(&right.public_key(bitcoin::key::Parity::Even).negate(secp))
         .expect("combine with a negative")
 }
 
@@ -196,7 +209,7 @@ fn xonly_minus_xonly<C: Verification>(
     right: &XOnlyPublicKey,
 ) -> PublicKey {
     left.public_key(bitcoin::key::Parity::Even)
-        .combine(&right.public_key(bitcoin::key::Parity::Even).negate(&secp))
+        .combine(&right.public_key(bitcoin::key::Parity::Even).negate(secp))
         .expect("combine with a negative")
 }
 
