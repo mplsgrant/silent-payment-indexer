@@ -6,7 +6,10 @@ use std::{
 use bech32::{
     primitives::decode::UncheckedHrpstring, Bech32, Bech32m, ByteIterExt, Fe32, Fe32IterExt, Hrp,
 };
-use bitcoin::secp256k1::{PublicKey, Scalar, Secp256k1, SecretKey, Verification, XOnlyPublicKey};
+use bitcoin::{
+    key::Parity,
+    secp256k1::{PublicKey, Scalar, Secp256k1, SecretKey, Verification, XOnlyPublicKey},
+};
 use bitcoin_hashes::Hash;
 use hex_conservative::{Case, DisplayHex, FromHex};
 
@@ -102,7 +105,7 @@ fn scanning<C: Verification>(
     loop {
         let t_k = SharedSecretHash::new(&ecdh_shared_secret, k);
         let t_k = Scalar::from_be_bytes(t_k.to_byte_array()).expect("hash to scalar");
-        let (P_k, parity) = B_spend
+        let (P_k, P_k_parity) = B_spend
             .add_exp_tweak(secp, &t_k)
             .expect("scalar to tweak")
             .x_only_public_key();
@@ -116,7 +119,7 @@ fn scanning<C: Verification>(
         for output in outputs_to_check.iter() {
             if &P_k == output {
                 wallet.push((
-                    P_k.public_key(parity),
+                    P_k.public_key(P_k_parity),
                     SecretKey::from_slice(&t_k.to_be_bytes()).unwrap(),
                 ));
                 output_to_remove = Some(*output);
@@ -129,7 +132,7 @@ fn scanning<C: Verification>(
             }
             if !precomputed_labels.is_empty() {
                 // m_G_sub = output - P_k
-                let m_G_sub = xonly_minus_xonly(secp, output, &P_k);
+                let m_G_sub = xonly_minus_xonly(secp, output, Parity::Even, &P_k, P_k_parity);
                 let m_G_sub_key = m_G_sub.serialize().to_lower_hex_string();
                 println!("subkey: {}", m_G_sub_key);
                 if let Some(label) = precomputed_labels.get(&m_G_sub_key) {
@@ -152,13 +155,13 @@ fn scanning<C: Verification>(
                     wallet.push((pub_key, priv_key_tweak));
                     output_to_remove = Some(*output);
                     println!(
-                        "pub_key: {} \npriv_key_tweak: {}",
+                        "pub_key_m: {} \npriv_key_tweak: {}",
                         pub_key.serialize().as_hex(),
                         priv_key_tweak.display_secret()
                     );
                     k += 1;
                 } else {
-                    let m_G_sub = xonly_minus_xonly(secp, output, &P_k);
+                    let m_G_sub = xonly_minus_xonly(secp, output, Parity::Even, &P_k, P_k_parity);
                     let m_g_sub_key = m_G_sub.serialize().to_hex_string(Case::Lower);
                     if let Some(label) = precomputed_labels.get(&m_g_sub_key) {
                         let m_g_sub_scalar =
@@ -205,11 +208,14 @@ fn public_key_minus_xonly<C: Verification>(
 
 fn xonly_minus_xonly<C: Verification>(
     secp: &Secp256k1<C>,
-    left: &XOnlyPublicKey,
-    right: &XOnlyPublicKey,
+    left_key: &XOnlyPublicKey,
+    left_parity: Parity,
+    right_key: &XOnlyPublicKey,
+    right_parity: Parity,
 ) -> PublicKey {
-    left.public_key(bitcoin::key::Parity::Even)
-        .combine(&right.public_key(bitcoin::key::Parity::Even).negate(secp))
+    left_key
+        .public_key(left_parity)
+        .combine(&right_key.public_key(right_parity).negate(secp))
         .expect("combine with a negative")
 }
 
