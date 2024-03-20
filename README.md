@@ -24,7 +24,8 @@ This indexer helps with Silent Payments by searching through the blockchain for 
 
 # Diagram
 
-```
+```rust
+/*
  ┏━━━━━━━━━━┱────────────╮           An outpoint - the transaction hash and its
  ┃ Outpoint ┃ txid, vout │           specific vout index.
  ┗━━━━━━━━━━┹────────────╯
@@ -35,6 +36,12 @@ This indexer helps with Silent Payments by searching through the blockchain for 
  ┃ TxOut    ┃ amount, scriptPubKey │ be able to sign the public key contained
  ┗━━━━━━━━━━┹──────────────────────╯ within.
 
+╭───────────────────────────────────────────────────────────────────────────────╮
+
+
+
+╰───────────────────────────────────────────────────────────────────────────────╯
+*/
 ```
 
 # Out links
