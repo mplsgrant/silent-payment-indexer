@@ -86,6 +86,12 @@ fn scanning<C: Verification>(
     outputs_to_check: &mut HashSet<XOnlyPublicKey>,
     precomputed_labels: HashMap<MGHex, LabelHashHex>,
 ) -> Vec<(PublicKey, SecretKey)> {
+    println!("inputs_hash: {}", inputs_hash);
+    println!("b_scan: {}", b_scan.display_secret());
+    println!("B_spend: {}", B_spend.serialize().as_hex());
+    println!("pubkey_summation: {}", pubkey_summation);
+    println!("precomputed_labels: {:?}", precomputed_labels);
+
     //  ecdh_shared_secret = input_hash·A_sum·b_scan
     let input_hash_scalar =
         Scalar::from_be_bytes(inputs_hash.to_byte_array()).expect("input_hash converts to scalar");
@@ -115,7 +121,7 @@ fn scanning<C: Verification>(
         }
         outputs_to_check
             .iter()
-            .for_each(|x| println!("{}", x.serialize().as_hex()));
+            .for_each(|x| println!("to_check: {}", x.serialize().as_hex()));
         for output in outputs_to_check.iter() {
             if &P_k == output {
                 wallet.push((
@@ -136,13 +142,9 @@ fn scanning<C: Verification>(
                 let m_G_sub_key = m_G_sub.serialize().to_lower_hex_string();
                 println!("subkey: {}", m_G_sub_key);
                 if let Some(label) = precomputed_labels.get(&m_G_sub_key) {
-                    let m_G_sub_scalar =
-                        Scalar::from_be_bytes(m_G_sub.x_only_public_key().0.serialize())
-                            .expect("scalar from x_only pubkey");
-                    let P_km = P_k
-                        .add_tweak(secp, &m_G_sub_scalar)
-                        .expect("add scalar tweak");
-                    let pub_key = P_km.0.public_key(P_km.1);
+                    let P_k = P_k.public_key(P_k_parity);
+                    let P_km = P_k.combine(&m_G_sub).expect("P_k combines");
+                    let pub_key = P_km;
                     let priv_key_tweak = SecretKey::from_slice(&t_k.to_be_bytes())
                         .expect("scalar becomes secretkey")
                         .add_tweak(
