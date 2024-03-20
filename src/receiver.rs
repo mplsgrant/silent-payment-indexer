@@ -341,7 +341,6 @@ mod tests {
             assert!(!&expected_addresses.is_empty());
             assert_eq!(created_addresses.difference(&expected_addresses).count(), 0);
 
-            assert!(!given_pubkeys.is_empty());
             if !given_pubkeys.is_empty() {
                 let pubkeys: Vec<&PublicKey> = given_pubkeys.iter().collect();
                 let pubkey_summation = PublicKeySummation::new(&pubkeys).expect("pubkeys");
@@ -430,6 +429,8 @@ mod tests {
                         assert!(expected_sig.contains(&sig));
                     })
                     .for_each(drop);
+            } else {
+                assert_eq!(comment, &"No valid inputs, sender generates no outputs")
             }
         }
     }
