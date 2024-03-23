@@ -20,10 +20,6 @@ This indexer helps with Silent Payments by searching through the blockchain for 
   - [x] p2wpkh
   - [x] p2tr
 
-# Questions
-- Labels for change: Will the m=0 labeled addresses look like a change addresses to nosy observers?
-- Does declaring H as the blessed Nothing Up My Sleeves (NUMS) number reveal too much info? What if we did NUMS + hash
-
 # Diagram
 
 ```
