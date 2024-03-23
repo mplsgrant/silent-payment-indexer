@@ -23,14 +23,14 @@ type LabelHashHex = String;
 
 #[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct SilentPaymentAddress {
-    pub b_scan: PublicKey,
-    pub b_spend: PublicKey,
+    pub scan_pubkey: PublicKey,
+    pub spend_pubkey: PublicKey,
 }
 impl SilentPaymentAddress {
     pub fn new(b_scan: &PublicKey, b_spend: &PublicKey) -> Self {
         Self {
-            b_scan: *b_scan,
-            b_spend: *b_spend,
+            scan_pubkey: *b_scan,
+            spend_pubkey: *b_spend,
         }
     }
     pub fn from_bech32(bech32: &str) -> Self {
@@ -58,10 +58,10 @@ impl SilentPaymentAddress {
         }
     }
     pub fn to_bech32(&self) -> String {
-        self.b_scan
+        self.scan_pubkey
             .serialize()
             .iter()
-            .chain(self.b_spend.serialize().iter())
+            .chain(self.spend_pubkey.serialize().iter())
             .copied()
             .bytes_to_fes()
             .with_checksum::<Bech32m>(&Hrp::parse_unchecked("sp"))
@@ -86,12 +86,6 @@ fn scanning<C: Verification>(
     outputs_to_check: &mut HashSet<XOnlyPublicKey>,
     precomputed_labels: HashMap<MGHex, LabelHashHex>,
 ) -> Vec<(PublicKey, SecretKey)> {
-    println!("inputs_hash: {}", inputs_hash);
-    println!("b_scan: {}", b_scan.display_secret());
-    println!("B_spend: {}", B_spend.serialize().as_hex());
-    println!("pubkey_summation: {}", pubkey_summation);
-    println!("precomputed_labels: {:?}", precomputed_labels);
-
     //  ecdh_shared_secret = input_hash·A_sum·b_scan
     let input_hash_scalar =
         Scalar::from_be_bytes(inputs_hash.to_byte_array()).expect("input_hash converts to scalar");
@@ -119,9 +113,6 @@ fn scanning<C: Verification>(
         if let Some(pubkey) = output_to_remove {
             outputs_to_check.remove(&pubkey);
         }
-        outputs_to_check
-            .iter()
-            .for_each(|x| println!("to_check: {}", x.serialize().as_hex()));
         for output in outputs_to_check.iter() {
             if &P_k == output {
                 wallet.push((
@@ -130,17 +121,12 @@ fn scanning<C: Verification>(
                 ));
                 output_to_remove = Some(*output);
                 k += 1;
-                println!(
-                    "output_to_remove: {}",
-                    output_to_remove.unwrap().serialize().as_hex()
-                );
                 break;
             }
             if !precomputed_labels.is_empty() {
                 // m_G_sub = output - P_k
                 let m_G_sub = xonly_minus_xonly(secp, output, Parity::Even, &P_k, P_k_parity);
                 let m_G_sub_key = m_G_sub.serialize().to_lower_hex_string();
-                println!("subkey: {}", m_G_sub_key);
                 if let Some(label) = precomputed_labels.get(&m_G_sub_key) {
                     let P_k = P_k.public_key(P_k_parity);
                     let P_km = P_k.combine(&m_G_sub).expect("P_k combines");
@@ -156,11 +142,6 @@ fn scanning<C: Verification>(
                         .expect("scalar to tweak");
                     wallet.push((pub_key, priv_key_tweak));
                     output_to_remove = Some(*output);
-                    println!(
-                        "pub_key_m: {} \npriv_key_tweak: {}",
-                        pub_key.serialize().as_hex(),
-                        priv_key_tweak.display_secret()
-                    );
                     k += 1;
                 } else {
                     let m_G_sub = xonly_minus_xonly(secp, output, Parity::Even, &P_k, P_k_parity);
@@ -236,13 +217,12 @@ mod tests {
         OutPoint, ScriptBuf, XOnlyPublicKey,
     };
     use bitcoin_hashes::{sha256, Hash};
-    use hex_conservative::{Case, DisplayHex};
+    use hex_conservative::DisplayHex;
 
     use std::{
         collections::{BTreeSet, HashMap, HashSet},
         fs::File,
         io::Read,
-        str::FromStr,
     };
 
     fn get_bip352_test_vectors() -> BIP352TestVectors {

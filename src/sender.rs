@@ -4,6 +4,7 @@ use crate::{
     InputData, PublicKeySummation,
 };
 use bitcoin::secp256k1::PublicKey;
+use silentpayments::sending::generate_recipient_pubkeys;
 
 type BScan = PublicKey;
 type Bm = PublicKey;
@@ -39,7 +40,8 @@ mod tests {
     }
 
     #[test]
-    fn a_test() {
+    #[allow(non_snake_case)]
+    fn a_to_z_test() {
         let secp = Secp256k1::new();
         let test_vectors = get_bip352_test_vectors();
         let mut test_count = 25;
@@ -155,15 +157,15 @@ mod tests {
                         let address = SilentPaymentAddress::from_bech32(&recipient.recipient.0);
                         let amount =
                             Amount::from_btc(recipient.recipient.1).expect("amount parses");
-                        (address.b_scan, address.b_spend, amount)
+                        (address.scan_pubkey, address.spend_pubkey, amount)
                     })
                     .fold(
                         HashMap::<BScan, Vec<(Bm, Amount)>>::new(),
-                        |mut grouping, (b_scan, b_m, amount)| {
-                            if let Some(pubkeys_amounts) = grouping.get_mut(&b_scan) {
-                                pubkeys_amounts.push((b_m, amount));
+                        |mut grouping, (scan_pubkey, spend_pubkey, amount)| {
+                            if let Some(pubkeys_amounts) = grouping.get_mut(&scan_pubkey) {
+                                pubkeys_amounts.push((spend_pubkey, amount));
                             } else {
-                                grouping.insert(b_scan, vec![(b_m, amount)]);
+                                grouping.insert(scan_pubkey, vec![(spend_pubkey, amount)]);
                             }
                             grouping
                         },
@@ -196,16 +198,16 @@ mod tests {
                             let mut k = 0;
                             b_m_and_amounts
                                 .iter()
-                                .map(|(b_m, amount)| {
+                                .map(|(B_m, amount)| {
                                     let t_k = SharedSecretHash::new(&ecdh_shared_secret, k);
                                     let t_k = Scalar::from_be_bytes(t_k.to_byte_array())
                                         .expect("hashes convert to scalars");
-                                    let p_km = b_m
+                                    let P_km = B_m
                                         .add_exp_tweak(&secp, &t_k)
                                         .expect("public keys get tweaked cleanly");
                                     k += 1;
-                                    let xonly_p_km = p_km.x_only_public_key();
-                                    pubkeys_with_amounts.push((xonly_p_km.0, *amount));
+                                    let xonly_P_km = P_km.x_only_public_key();
+                                    pubkeys_with_amounts.push((xonly_P_km.0, *amount));
                                 })
                                 .for_each(drop);
                             pubkeys_with_amounts
