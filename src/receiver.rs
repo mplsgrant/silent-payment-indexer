@@ -12,6 +12,7 @@ use bitcoin::{
 };
 use bitcoin_hashes::Hash;
 use hex_conservative::{Case, DisplayHex, FromHex};
+use silentpayments::receiving::Receiver;
 
 use crate::{
     tagged_hashes::{InputsHash, SharedSecretHash},
@@ -238,7 +239,7 @@ mod tests {
 
     #[allow(non_snake_case)]
     #[test]
-    fn test_a() {
+    fn test_a_z() {
         let secp = Secp256k1::new();
         let test_vectors = get_bip352_test_vectors();
         let receiving_objects: Vec<(&ReceivingObject, &String)> = test_vectors
