@@ -219,6 +219,7 @@ mod tests {
     };
     use bitcoin_hashes::{sha256, Hash};
     use hex_conservative::DisplayHex;
+    use silentpayments::{receiving::Label, utils::receiving::get_pubkey_from_input};
 
     use std::{
         collections::{BTreeSet, HashMap, HashSet},
@@ -235,6 +236,122 @@ mod tests {
         let mut json = String::new();
         file.read_to_string(&mut json).unwrap();
         serde_json::from_str(&json).unwrap()
+    }
+
+    #[allow(non_snake_case)]
+    #[test]
+    fn external_api() {
+        let secp = Secp256k1::new();
+        pub type Result<T> = std::result::Result<T, silentpayments::Error>;
+        let scan_result: Vec<(
+            SecretKey,
+            HashMap<Option<Label>, HashMap<XOnlyPublicKey, Scalar>>,
+        )> = get_bip352_test_vectors()
+            .test_vectors
+            .iter()
+            .flat_map(|test| {
+                println!("{}", test.comment);
+                test.receiving.iter()
+            })
+            .map(|receiving_object| {
+                let given = &receiving_object.given;
+                let expected = &receiving_object.expected;
+                let b_scan = given.key_material.scan_priv_key;
+                let scan_pubkey = given.key_material.scan_priv_key.public_key(&secp);
+                let spend_pubkey = given.key_material.spend_priv_key.public_key(&secp);
+                let labels = given
+                    .labels
+                    .iter()
+                    .map(|label| Label::new(given.key_material.scan_priv_key, *label));
+                let input_pub_keys = given
+                    .vin
+                    .iter()
+                    .flat_map(|vin| {
+                        let script_sig = if let Some(script_sig) = &vin.script_sig {
+                            script_sig.as_bytes()
+                        } else {
+                            &[]
+                        };
+                        let txinwitness = if let Some(txinwitness) = &vin.txinwitness {
+                            txinwitness.to_vec()
+                        } else {
+                            vec![]
+                        };
+
+                        let script_pub_key = Vec::from_hex(&vin.prevout.script_pubkey.hex).unwrap();
+                        get_pubkey_from_input(script_sig, &txinwitness, &script_pub_key)
+                    })
+                    .flatten();
+                let outpoints_data = given.vin.iter().map(|vin| (vin.txid.to_string(), vin.vout));
+                let pubkeys_to_check = given.outputs.iter();
+                (
+                    b_scan,
+                    scan_pubkey,
+                    spend_pubkey,
+                    labels,
+                    input_pub_keys,
+                    outpoints_data,
+                    pubkeys_to_check,
+                )
+            })
+            .map(
+                |(
+                    b_scan,
+                    scan_pubkey,
+                    spend_pubkey,
+                    labels,
+                    input_pub_keys,
+                    outpoints_data,
+                    pubkeys_to_check,
+                )| {
+                    let receivers = labels.flat_map(move |label| {
+                        Receiver::new(0, scan_pubkey, spend_pubkey, label, false)
+                    });
+                    (
+                        b_scan,
+                        receivers,
+                        input_pub_keys,
+                        outpoints_data,
+                        pubkeys_to_check,
+                    )
+                },
+            )
+            .flat_map(
+                |(b_scan, receivers, input_pub_keys, outpoints_data, pubkeys_to_check)| {
+                    let input_pub_keys: Vec<PublicKey> = input_pub_keys.collect();
+                    let input_pub_keys: Vec<&PublicKey> = input_pub_keys.iter().collect();
+                    let outpoints_data: Vec<(String, u32)> = outpoints_data.collect();
+                    let pubkeys_to_check: Vec<XOnlyPublicKey> =
+                        pubkeys_to_check.map(|x| x.output).collect();
+                    if !input_pub_keys.is_empty() {
+                        let tweak_data = silentpayments::utils::receiving::calculate_tweak_data(
+                            input_pub_keys.as_slice(),
+                            outpoints_data.as_slice(),
+                        )
+                        .expect("derive tweak data");
+                        let ecdh_shared_secret =
+                            silentpayments::utils::receiving::calculate_shared_secret(
+                                tweak_data, b_scan,
+                            )
+                            .expect("a shared secret");
+
+                        let scan_result = receivers
+                            .flat_map(move |receiver| {
+                                receiver
+                                    .scan_transaction(&ecdh_shared_secret, pubkeys_to_check.clone())
+                            })
+                            .flatten()
+                            .collect();
+                        println!("b_scan: {:?}, {:?}", b_scan, scan_result);
+                        Some((b_scan, scan_result))
+                    } else {
+                        None
+                    }
+                },
+            )
+            .collect();
+
+        // TODO: test results
     }
 
     #[allow(non_snake_case)]

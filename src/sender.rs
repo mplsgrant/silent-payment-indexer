@@ -54,6 +54,8 @@ mod tests {
                 test.sending.iter()
             })
             .map(|sending_example| {
+                let mut outpoint_btree_all = BTreeSet::new();
+                let mut outpoint_btree_limited = BTreeSet::new();
                 let (secret_keys, pubkeys, outpoints) = sending_example
                     .given
                     .vin
@@ -65,9 +67,11 @@ mod tests {
                             script_sig: vin.script_sig.as_deref(),
                             txinwitness: vin.txinwitness.as_ref(),
                         };
+                        outpoint_btree_all.insert(OutPoint::new(vin.txid, vin.vout));
                         get_input_for_ssd(&input_data).map(|input_for_ssd| (vin, input_for_ssd))
                     })
                     .map(|(vin, input_for_ssd)| {
+                        outpoint_btree_limited.insert(OutPoint::new(vin.txid, vin.vout));
                         (vin, input_for_ssd, OutPoint::new(vin.txid, vin.vout))
                     })
                     .fold(
@@ -118,6 +122,10 @@ mod tests {
                             (priv_keys, pubkeys, outpoints)
                         },
                     );
+
+                // Help compare the smallest outpoints (in whole txn vs from among those used for the inputs to ssd)
+                println!("BTREE_ALL: {:?}", outpoint_btree_all);
+                println!("BTREE_LIM: {:?}", outpoint_btree_limited);
 
                 let maybe_smallest_outpoint = outpoints
                     .into_iter()

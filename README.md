@@ -37,6 +37,7 @@ This indexer helps with Silent Payments by searching through the blockchain for 
 │ Alice has UTXOs, and she wants to spend them to an address that Bob can       │
 │ discover. Bob provides a public key to Alice in the form of a Silent Payment  │
 │ Address.                                                                      │
+│                                                                               │
 │ Special Public Keypairs: p2pkh, p2sh-p2wkph, p2wpkh, p2tr                     │
 │                                                                               │
 │   ╭────── BIP0352/Inputs Tagged Hash ───────╮                                 │
@@ -48,6 +49,13 @@ This indexer helps with Silent Payments by searching through the blockchain for 
 │   ╰──────────────────────────────────────────────────────────────────────╯    │
 │                                                                               │
 ╰───────────────────────────────────────────────────────────────────────────────╯
+
+╭───────────────────────────────────────────────────────────────────────────────╮
+│ Indexer selects all UTXOs with a taproot output.                              │
+│                                                                               │
+╰───────────────────────────────────────────────────────────────────────────────╯
+
+
 ```
 
 # Out links

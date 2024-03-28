@@ -13,17 +13,18 @@
 // You should have received a copy of the GNU General Public License along with Foobar. If not, see
 // <https://www.gnu.org/licenses/>.
 
+mod indexer;
 mod pubkey_extraction;
 mod receiver;
 mod sender;
 mod tagged_hashes;
 mod test_data;
-use std::fmt::Display;
 
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::{Script, ScriptBuf, Witness, XOnlyPublicKey};
 use hex_conservative::DisplayHex;
 use once_cell::sync::Lazy;
+use std::fmt::Display;
 
 /// "Nothing Up My Sleeves" number from BIP 341: 0x50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0
 static NUMS: [u8; 32] = [
