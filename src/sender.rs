@@ -67,6 +67,8 @@ mod tests {
             .map(|sending_example| {
                 let mut outpoint_btree_all = BTreeSet::new();
                 let mut outpoint_btree_limited = BTreeSet::new();
+                // TODO: Remove `outpoints` from this section. We get our smallest outpoint from
+                // among all inputs, not just from among inputs to ssd
                 let (secret_keys, pubkeys, outpoints) = sending_example
                     .given
                     .vin
@@ -138,11 +140,17 @@ mod tests {
                 println!("BTREE_ALL: {:?}", outpoint_btree_all);
                 println!("BTREE_LIM: {:?}", outpoint_btree_limited);
 
+                let outpoints: BTreeSet<OutPoint> = sending_example
+                    .given
+                    .vin
+                    .iter()
+                    .map(|vin| OutPoint::new(vin.txid, vin.vout))
+                    .collect();
                 let maybe_smallest_outpoint = outpoints
                     .into_iter()
                     .next()
                     .and_then(|smallest_outpoint| SmallestOutpoint::new(&[smallest_outpoint]));
-
+                println!("maybe_smallest: {:?}", maybe_smallest_outpoint);
                 let pubkeys: Vec<&PublicKey> = pubkeys.iter().collect(); // TODO Can we push the referencing up?
                 let maybe_pubkey_summation = PublicKeySummation::new(pubkeys.as_slice());
 
