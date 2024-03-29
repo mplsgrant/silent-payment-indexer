@@ -16,7 +16,7 @@
 mod indexer;
 mod pubkey_extraction;
 mod receiver;
-mod sender;
+pub mod sender;
 mod tagged_hashes;
 mod test_data;
 

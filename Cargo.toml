@@ -17,3 +17,4 @@ once_cell = "1.19.0"
 bech32 = "0.11.0"
 silentpayments = { git = "https://github.com/mplsgrant/rust-silentpayments.git" }
 bitcoincore-rpc = "0.18.0"
+bitcoind = { version = "0.34.2", features = ["26_0"] }
