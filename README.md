@@ -7,6 +7,7 @@ This indexer helps with Silent Payments by searching through the blockchain for 
 
 # WIP Items
 - [ ] Update tests to match the [current standard](https://github.com/bitcoin/bips/pull/1458#issuecomment-2013462784)
+- [ ] Scan with [Hintless](https://mark-schultz.github.io/hintless-pir/) or [WhisPIR](https://eprint.iacr.org/2024/266)
 - [ ] Scan with libbitcoinkernel
 - [ ] Scan with leveldb
 - [ ] Scan with RPC
