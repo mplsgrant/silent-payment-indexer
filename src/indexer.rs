@@ -19,13 +19,19 @@ mod tests {
     use std::str::FromStr;
 
     use bitcoin::{
+        bip32::{DerivationPath, Xpriv},
         key::{rand, Keypair, Parity, Secp256k1},
         secp256k1::{PublicKey, SecretKey},
         Address, Transaction,
     };
     use bitcoincore_rpc::{Auth, Client, RpcApi};
     use bitcoind::Conf;
+    use hex_conservative::DisplayHex;
     use silentpayments::utils::receiving::{calculate_tweak_data, get_pubkey_from_input};
+
+    const ALICE_XPRIV_STR: &str = "tprv8ZgxMBicQKsPd4arFr7sKjSnKFDVMR2JHw9Y8L9nXN4kiok4u28LpHijEudH3mMYoL4pM5UL9Bgdz2M4Cy8EzfErmU9m86ZTw6hCzvFeTg7";
+    const BOB_XPRIV_STR: &str = "tprv8ZgxMBicQKsPe72C5c3cugP8b7AzEuNjP4NSC17Dkpqk5kaAmsL6FHwPsVxPpURVqbNwdLAbNqi8Cvdq6nycDwYdKHDjDRYcsMzfshimAUq";
+    const BIP86_DERIVATION_PATH: &str = "m/86'/1'/0'/0";
 
     pub fn make_tr_address(maybe_sk: Option<&SecretKey>) -> Address {
         let secp = Secp256k1::new();
@@ -55,33 +61,46 @@ mod tests {
     }
 
     #[test]
-    fn dothing() {
-        let a_sk =
-            SecretKey::from_str("ef1ec963c51a782667b62cf8adee6cabc70698000dfaa5bc8ff9e5766c8fc4d2")
-                .expect("a_sk");
-        let b_sk =
-            SecretKey::from_str("d344a95bd10d8529cd8a8ecd35166853abe7891184bf28b93383681cba591d7b")
-                .expect("b_sk");
-        let a_address = make_tr_address(Some(&a_sk));
-        let b_address = make_tr_address(Some(&b_sk));
+    fn make_test_blocks() {
+        let secp = Secp256k1::new();
+        let base_deriv_path =
+            DerivationPath::from_str(BIP86_DERIVATION_PATH).expect("bip86 deriv path");
 
+        // Alice keys and addresses
+        let alice_xpriv = Xpriv::from_str(ALICE_XPRIV_STR).expect("alice xpriv");
+        let a_priv = alice_xpriv
+            .derive_priv(&secp, &base_deriv_path.child(0.into()))
+            .expect("a priv");
+        let a_sk = a_priv.private_key;
+
+        let a_address = make_tr_address(Some(&a_sk));
+
+        // bitcoind setup
         let mut conf = Conf::default();
-        conf.args.push("-txindex"); // allows for get_raw_transaction_info
-        conf.args.push("-blockfilterindex=1"); // allegedly makes the importdescriptors run faster
+        conf.args.push("-txindex");
+        conf.args.push("-blockfilterindex=1");
         conf.network = "regtest";
         let exe = bitcoind::exe_path().expect("probably downloaded bitcoind");
         let bitcoind = bitcoind::BitcoinD::with_conf(exe, &conf).expect("new bitcoind");
         let rpc = &bitcoind.client;
 
+        // get some funds into the system
         rpc.generate_to_address(103, &a_address).expect("bitcoind");
-        let txn = get_txns_in_blocknum(0, rpc)
-            .first()
-            .expect("initial coinbase txn");
 
+        // spend the funds
+        let txns = get_txns_in_blocknum(1, rpc);
+        txns.iter().for_each(|tx| println!("TX: {:?}", tx));
+        let maybe_amt_script_pubkey = txns.first().and_then(|coinbase_txn| {
+            coinbase_txn.output.first().map(|txout| {
+                println!("txout: {:?}", txout);
+                (&txout.value, &txout.script_pubkey)
+            })
+        });
+
+        // search block for pubkeys in latest block
         let block_count = rpc.get_block_count().expect("block count");
         let block_hash = rpc.get_block_hash(block_count).expect("block hash");
         let block = rpc.get_block(&block_hash).expect("block");
-
         let pubkeys = block
             .txdata
             .iter()

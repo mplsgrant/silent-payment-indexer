@@ -17,16 +17,12 @@ type Bm = PublicKey;
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::{
         receiver::SilentPaymentAddress, tagged_hashes::SharedSecretHash,
         test_data::BIP352TestVectors,
     };
 
-    use super::*;
-    // use crate::{
-    //     receiver::SilentPaymentAddress, tagged_hashes::SharedSecretHash,
-    //     test_data::BIP352TestVectors,
-    // };
     use bitcoin::{
         key::{Parity, Secp256k1},
         secp256k1::{PublicKey, Scalar, SecretKey},
