@@ -16,13 +16,10 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::str::FromStr;
+    use std::{collections::BTreeMap, str::FromStr};
 
     use bitcoin::{
-        bip32::{DerivationPath, Xpriv},
-        key::{rand, Keypair, Parity, Secp256k1},
-        secp256k1::{PublicKey, SecretKey},
-        Address, Transaction,
+        absolute::LockTime, bip32::{DerivationPath, Xpriv}, key::{rand, Keypair, Parity, Secp256k1}, psbt::Input, secp256k1::{PublicKey, SecretKey}, transaction::Version, Address, Amount, OutPoint, Psbt, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Witness
     };
     use bitcoincore_rpc::{Auth, Client, RpcApi};
     use bitcoind::Conf;
@@ -72,8 +69,15 @@ mod tests {
             .derive_priv(&secp, &base_deriv_path.child(0.into()))
             .expect("a priv");
         let a_sk = a_priv.private_key;
-
         let a_address = make_tr_address(Some(&a_sk));
+
+        // Bob keys and addresses
+        let bob_xpriv = Xpriv::from_str(BOB_XPRIV_STR).expect("alice xpriv");
+        let b_priv = bob_xpriv
+            .derive_priv(&secp, &base_deriv_path.child(0.into()))
+            .expect("a priv");
+        let b_sk = b_priv.private_key;
+        let b_address = make_tr_address(Some(&a_sk));
 
         // bitcoind setup
         let mut conf = Conf::default();
@@ -90,12 +94,52 @@ mod tests {
         // spend the funds
         let txns = get_txns_in_blocknum(1, rpc);
         txns.iter().for_each(|tx| println!("TX: {:?}", tx));
-        let maybe_amt_script_pubkey = txns.first().and_then(|coinbase_txn| {
-            coinbase_txn.output.first().map(|txout| {
-                println!("txout: {:?}", txout);
-                (&txout.value, &txout.script_pubkey)
+        let maybe_amt_script_pubkey = txns
+            .first()
+            .and_then(|coinbase_txn| {
+                let outpoint = OutPoint {
+                    txid: coinbase_txn.txid(),
+                    vout: 0,
+                };
+                coinbase_txn.output.first().map(move |txout| {
+                    println!("txout: {:?}", txout);
+                    (&txout.value, &txout.script_pubkey, outpoint)
+                })
             })
-        });
+            // prepare a psbt
+            .and_then(|(amount, script_pubkey, previous_output)| {
+                let txin = TxIn {
+                    previous_output,
+                    script_sig: ScriptBuf::new(),
+                    sequence: Sequence::MAX,
+                    witness: Witness::default(),
+                };
+                let txout = TxOut {
+                    value: Amount::from_btc(49.0).expect("amount"),
+                    script_pubkey: b_address.script_pubkey(),
+                };
+                let tx = Transaction {
+                    version: Version::TWO,
+                    lock_time: LockTime::ZERO,
+                    input: vec![txin],
+                    output: vec![txout],
+                };
+                Psbt::from_unsigned_tx(tx).ok()
+            }).and_then( |psbt| {
+
+                let mut origins = BTreeMap::new();
+                origins.insert(
+                    input_pubkey,
+                    (
+                        vec![],
+                        (
+                            Fingerprint::from_str(input_utxo.master_fingerprint)?,
+                            DerivationPath::from_str(input_utxo.derivation_path)?,
+                        ),
+                    ),
+                );
+                let input = Input {witness_utxo: todo!(), tap_key_origins: todo!()};
+            })
 
         // search block for pubkeys in latest block
         let block_count = rpc.get_block_count().expect("block count");
