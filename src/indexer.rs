@@ -19,7 +19,13 @@ mod tests {
     use std::{collections::BTreeMap, str::FromStr};
 
     use bitcoin::{
-        absolute::LockTime, bip32::{DerivationPath, Xpriv}, key::{rand, Keypair, Parity, Secp256k1}, psbt::Input, secp256k1::{PublicKey, SecretKey}, transaction::Version, Address, Amount, OutPoint, Psbt, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Witness
+        absolute::LockTime,
+        bip32::{DerivationPath, Xpriv},
+        key::{rand, Keypair, Parity, Secp256k1},
+        psbt::Input,
+        secp256k1::{PublicKey, SecretKey},
+        transaction::Version,
+        Address, Amount, OutPoint, Psbt, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Witness,
     };
     use bitcoincore_rpc::{Auth, Client, RpcApi};
     use bitcoind::Conf;
@@ -125,21 +131,26 @@ mod tests {
                     output: vec![txout],
                 };
                 Psbt::from_unsigned_tx(tx).ok()
-            }).and_then( |psbt| {
-
-                let mut origins = BTreeMap::new();
-                origins.insert(
-                    input_pubkey,
-                    (
-                        vec![],
-                        (
-                            Fingerprint::from_str(input_utxo.master_fingerprint)?,
-                            DerivationPath::from_str(input_utxo.derivation_path)?,
-                        ),
-                    ),
-                );
-                let input = Input {witness_utxo: todo!(), tap_key_origins: todo!()};
             })
+            .and_then(|psbt| {
+                // let mut origins = BTreeMap::new();
+                // origins.insert(
+                //     input_pubkey,
+                //     (
+                //         vec![],
+                //         (
+                //             Fingerprint::from_str(input_utxo.master_fingerprint)?,
+                //             DerivationPath::from_str(input_utxo.derivation_path)?,
+                //         ),
+                //     ),
+                // );
+                let input = Input {
+                    witness_utxo: todo!(),
+                    tap_key_origins: todo!(),
+                    ..Default::default()
+                };
+                Some(42)
+            });
 
         // search block for pubkeys in latest block
         let block_count = rpc.get_block_count().expect("block count");
