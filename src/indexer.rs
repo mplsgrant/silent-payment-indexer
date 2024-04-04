@@ -22,10 +22,11 @@ mod tests {
         absolute::LockTime,
         bip32::{DerivationPath, Xpriv},
         key::{rand, Keypair, Parity, Secp256k1},
-        psbt::Input,
+        psbt::{Input, PsbtSighashType},
         secp256k1::{PublicKey, SecretKey},
         transaction::Version,
         Address, Amount, OutPoint, Psbt, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Witness,
+        XOnlyPublicKey,
     };
     use bitcoincore_rpc::{Auth, Client, RpcApi};
     use bitcoind::Conf;
@@ -132,23 +133,22 @@ mod tests {
                 };
                 Psbt::from_unsigned_tx(tx).ok()
             })
-            .and_then(|psbt| {
-                // let mut origins = BTreeMap::new();
-                // origins.insert(
-                //     input_pubkey,
-                //     (
-                //         vec![],
-                //         (
-                //             Fingerprint::from_str(input_utxo.master_fingerprint)?,
-                //             DerivationPath::from_str(input_utxo.derivation_path)?,
-                //         ),
-                //     ),
-                // );
-                let input = Input {
-                    witness_utxo: todo!(),
-                    tap_key_origins: todo!(),
+            .and_then(|mut psbt| {
+                let input_pubkey = XOnlyPublicKey::from_keypair(&alice_xpriv.to_keypair(&secp)).0;
+                let mut origins = BTreeMap::new();
+                origins.insert(
+                    input_pubkey,
+                    (vec![], (alice_xpriv.fingerprint(&secp), base_deriv_path)),
+                );
+                let mut input = Input {
+                    witness_utxo: Some(psbt.unsigned_tx.output[0].clone()),
+                    tap_key_origins: origins,
                     ..Default::default()
                 };
+                input.sighash_type =
+                    Some(PsbtSighashType::from_str("SIGHASH_ALL").expect("sighash"));
+                input.tap_internal_key = Some(input_pubkey);
+                psbt.inputs = vec![input];
                 Some(42)
             });
 
