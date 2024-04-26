@@ -3,7 +3,7 @@ This is a classroom project aimed at increasing the understanding of Silent Paym
 
 Silent Payments help keep your Bitcoin balances more private. Today, if several people send you Bitcoin using one of your Bitcoin addresses, all that money ends up grouped together on the public blockchain. That means people can see how much money you received. Silent Payments make it so the money does not get grouped together. While it is possible to avoid getting your money grouped together, doing so requires making a new Bitcoin address every time someone pays you. Silent Payments do that automatically.
 
-This indexer helps with Silent Payments by searching through the blockchain for your money. It needs a secret from you to perform the search, and I recommend not provding that secret unless you know what you are doing. Afterall, this is just a classroom project.
+This indexer helps with Silent Payments by searching through the blockchain for your money. It needs a secret from you to perform the search, and I recommend not providing that secret unless you know what you are doing. After all, this is just a classroom project.
 
 # WIP Items
 - [ ] Update tests to match the [current standard](https://github.com/bitcoin/bips/pull/1458#issuecomment-2013462784)
@@ -12,7 +12,7 @@ This indexer helps with Silent Payments by searching through the blockchain for 
 - [ ] Scan with leveldb
 - [ ] Scan with RPC
 - [ ] Simplify scanning types
-- [x] Run all recommneded tests for receiving
+- [x] Run all recommend tests for receiving
 - [x] Add all tagged hashes
 - [x] Run all recommended tests against pubkey extraction
 - [x] Extract pubkeys from relevant txn type w/ basic testing
@@ -30,7 +30,7 @@ This indexer helps with Silent Payments by searching through the blockchain for 
  ┏━━━━━━━━━━┱────────────────────╮
  ┃ Sig Data ┃ scriptSig, witness │
  ┗━━━━━━━━━━┹────────────────────╯
- ┏━━━━━━━━━━┱──────────────────────╮ Trannsaction Output. The private key must
+ ┏━━━━━━━━━━┱──────────────────────╮ Transaction Output. The private key must
  ┃ TxOut    ┃ amount, scriptPubKey │ be able to sign the public key contained
  ┗━━━━━━━━━━┹──────────────────────╯ within.
 
